@@ -6,10 +6,10 @@
 static const uint32_t localaddr = 127*256*256*256 + 1;
 static int issamehost = 0, islocal = 0;
 
-void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr)
+void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint32_t serverip)
 {
 	struct ifi_info *ifi, *ifihead;
-	uint32_t clientip, netmask, serverip;
+	uint32_t clientip, netmask;
 	char buff[1024];
 	struct sockaddr_in *sa;
 	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
@@ -31,9 +31,10 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr)
 			{
 				sa = (struct sockaddr_in *) ifi->ifi_ntmaddr;
 				netmask = htonl(sa->sin_addr.s_addr);
-				if( clientip & netmask == serverip & netmask)
+				if( (clientip & netmask) == (serverip & netmask))
 				{
 					islocal = 1;
+					sa = (struct sockaddr_in *) ifi->ifi_addr;
 					cliaddr->sin_addr.s_addr = sa->sin_addr.s_addr;
 				}
 
@@ -103,6 +104,6 @@ int main(int argc, char **argv)
 
 	bzero(&cliaddr, sizeof(cliaddr));
 	cliaddr.sin_family = AF_INET;
-	resolveips(&servaddr, &cliaddr);
+	resolveips(&servaddr, &cliaddr, serverip);
 }
 
