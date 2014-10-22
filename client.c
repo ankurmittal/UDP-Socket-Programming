@@ -9,7 +9,7 @@ static int issamehost = 0, islocal = 0;
 void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint32_t serverip)
 {
 	struct ifi_info *ifi, *ifihead;
-	uint32_t clientip, netmask;
+	uint32_t clientip, pnetmask = 0, netmask;
 	char buff[1024];
 	struct sockaddr_in *sa;
 	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
@@ -27,12 +27,13 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 				servaddr->sin_addr.s_addr = cliaddr->sin_addr.s_addr = ntohl(localaddr);
 				continue;
 			}
-			if(!islocal)
+			sa = (struct sockaddr_in *) ifi->ifi_ntmaddr;
+			netmask = htonl(sa->sin_addr.s_addr);
+			if(!islocal || netmask > pnetmask)
 			{
-				sa = (struct sockaddr_in *) ifi->ifi_ntmaddr;
-				netmask = htonl(sa->sin_addr.s_addr);
 				if( (clientip & netmask) == (serverip & netmask))
 				{
+					pnetmask = netmask;
 					islocal = 1;
 					sa = (struct sockaddr_in *) ifi->ifi_addr;
 					cliaddr->sin_addr.s_addr = sa->sin_addr.s_addr;
@@ -50,7 +51,7 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 	if(issamehost)
 		printf(" Server is on same host, ");
 	else if(islocal)
-		printf(" Sever is local, ");
+		printf(" Server is local, ");
 	else 
 		printf(" Server is not local, ");
 	printf("IPserver: %s, ",
