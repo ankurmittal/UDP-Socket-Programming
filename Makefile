@@ -1,10 +1,10 @@
 
-slib = ../unpv13e
-#slib = /home/courses/cse533/Stevens/unpv13e_solaris2.10
+#slib = ../unpv13e
+slib = /home/courses/cse533/Stevens/unpv13e_solaris2.10
 
 CC = gcc
 
-LIBS =  ${slib}/libunp.a
+LIBS =  -lsocket ${slib}/libunp.a
 
 FLAGS =  -g -O2
 CFLAGS = ${FLAGS} -I${slib}/lib
