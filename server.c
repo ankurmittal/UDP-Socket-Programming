@@ -1,81 +1,79 @@
 #include "unpifiplus.h"
+#include "common.h"
+
+typedef struct {
+	int sockfd;
+	struct in_addr *addr;
+	struct in_addr *ntmaddr;
+	struct in_addr *subaddr;
+}SockStruct;
 
 int main(int argc, char **argv)
 {
-	int sockfd;
+	int i=0, sockfd, maxfd=0, port=0, window=0, count=0;
 	const int on = 1;
 	pid_t pid;
 	struct ifi_info *ifi, *ifihead;
-	struct sockaddr_in *sa, cliaddr, wildaddr;
-	for (ifihead = ifi = Get_ifi_info(AF_INET, 1);
-			ifi != NULL; ifi = ifi->ifi_next) {
-		/* bind unicast address */
+	struct sockaddr_in *sa;
+	FILE *fp;
+	SockStruct *array;
+	struct in_addr subaddr;
+	fd_set rset;
+
+	fp = fopen("server.in", "r");
+	if(fp == NULL)
+	{
+		perror("Error opening file - server.in");
+		exit(1);
+	}
+	port = readint(fp);
+	window = readint(fp);
+	fclose(fp);
+	
+	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1); ifi != NULL; ifi = ifi->ifi_next) {
+		count++;	
+	}
+
+	array = (SockStruct *) malloc(count * sizeof(SockStruct));
+
+	FD_ZERO(&rset);
+
+	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1), i=0; ifi != NULL; ifi = ifi->ifi_next, i++) {
 		sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
 		Setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 		sa = (struct sockaddr_in *) ifi->ifi_addr;
 		sa->sin_family = AF_INET;
-		sa->sin_port = htons(SERV_PORT);
+		sa->sin_port = htons(port);
 		Bind(sockfd, (SA *) sa, sizeof(*sa));
-		printf("bound %s\n", Sock_ntop((SA *) sa, sizeof(*sa)));
-		if ( (pid = Fork()) == 0) { /* child */
-			mydg_echo(sockfd, (SA *) &cliaddr, sizeof(cliaddr), (SA *)
-					sa);
-			exit(0); /* never executed */
+		array[i].addr = &((struct sockaddr_in *) ifi->ifi_addr)->sin_addr;
+		array[i].ntmaddr = &((struct sockaddr_in *) ifi->ifi_ntmaddr)->sin_addr;
+		subaddr.s_addr = (*array[i].addr).s_addr & (*array[i].ntmaddr).s_addr;
+		array[i].subaddr = &subaddr;
+		array[i].sockfd = sockfd;
+	
+		printf("\nPort: %d, Window: %d\n", port, window);
+		printf("IP Address: %s\n", inet_ntoa(*(array[i].addr)));
+		printf("Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
+		printf("Subnet Address: %s\n", inet_ntoa(*(array[i].subaddr)));
+	}
 
+	free_ifi_info_plus(ifihead);
+	for( ; ; ) {
+		for(i=0; i<count; i++) {
+			FD_SET(array[i].sockfd, &rset);
+			maxfd = max(maxfd, array[i].sockfd);
 		}
-		if (ifi->ifi_flags & IFF_BROADCAST) {
-			/* try to bind broadcast address */
-			sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
-			Setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-			sa = (struct sockaddr_in *) ifi->ifi_brdaddr;
-			sa->sin_family = AF_INET;
-			sa->sin_port = htons(SERV_PORT);
-			if (bind(sockfd, (SA *) sa, sizeof(*sa)) < 0) {
-				if (errno == EADDRINUSE) {
-					printf("EADDRINUSE: %s\n",
-							Sock_ntop((SA *) sa, sizeof(*sa)));
-					Close(sockfd);
-					continue;
-				} else
-					err_sys("bind error for %s",
-							Sock_ntop((SA *) sa, sizeof(*sa)));
-			}
-			printf("bound %s\n", Sock_ntop((SA *) sa, sizeof(*sa)));
-			if ( (pid = Fork()) == 0) { /* child */
-				mydg_echo(sockfd, (SA *) &cliaddr, sizeof(cliaddr),
-						(SA *) sa);
-				exit(0); /* never executed */
+		Select(maxfd+1, &rset, NULL, NULL, NULL);
+		
+		for(i=0; i<count; i++) {
+			if(FD_ISSET(array[i].sockfd, &rset)) {
+				printf("\nIn select for sockfd: %d\n", array[i].sockfd);
+				// Do Something
 			}
 		}
 	}
-	/* bind wildcard address */
-	sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
-	Setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	bzero(&wildaddr, sizeof(wildaddr));
-	wildaddr.sin_family = AF_INET;
-	wildaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	wildaddr.sin_port = htons(SERV_PORT);
-	Bind(sockfd, (SA *) &wildaddr, sizeof(wildaddr));
-	printf("bound %s\n", Sock_ntop((SA *) &wildaddr,
-				sizeof(wildaddr)));
-	if ( (pid = Fork()) == 0) { /* child */
-		mydg_echo(sockfd, (SA *) &cliaddr, sizeof(cliaddr), (SA *) sa);
-		exit(0); /* never executed */
-	}
+
+	printf("\nExiting..!!\n");
+	free(array);
 	exit(0);
-}
-
-void mydg_echo(int sockfd, SA *pcliaddr, socklen_t clilen, SA *myaddr)
-{
-	int n;
-	char mesg[MAXLINE];
-	socklen_t len;
-	for ( ; ; ) {
-		len = clilen;
-		n = Recvfrom(sockfd, mesg, MAXLINE, 0, pcliaddr, &len);
-		printf("child %d, datagram from %s", getpid(),
-				Sock_ntop(pcliaddr, len));
-		printf(", to %s\n", Sock_ntop(myaddr, clilen));
-		Sendto(sockfd, mesg, n, 0, pcliaddr, len);
-	}
 }
