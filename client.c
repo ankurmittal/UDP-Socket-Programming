@@ -5,10 +5,11 @@
 
 int main(int argc, char **argv)
 {
-	int sockfd, sport, ret, ssize, rseed, prob, mean;
+	int sockfd, sport, ret, ssize, rseed, mean;
+	float prob;
 	const int on = 1;
 	pid_t pid;
-	char line[100], serverip[16], *temp, filename[PATH_MAX];
+	char serverip[16], *temp, filename[PATH_MAX];
 	struct ifi_info *ifi, *ifihead;
 	struct sockaddr_in *sa, cliaddr, wildaddr;
 	FILE *infile;
@@ -24,8 +25,10 @@ int main(int argc, char **argv)
 	readstring(filename, PATH_MAX, infile);
 	ssize = readint(infile);
 	rseed = readint(infile);
-	prob = readint(infile);
-	mean = strtol(line, NULL, 10);
+	prob = readfloat(infile);
+	mean = readint(infile);
+
+	printf("%s, %d, %s, %d, %d, %f, %d", serverip, sport, filename, ssize, rseed, prob, mean);
 	exit(0);
 
 
