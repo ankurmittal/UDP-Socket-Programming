@@ -10,7 +10,6 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 {
 	struct ifi_info *ifi, *ifihead;
 	uint32_t clientip, pnetmask = 0, netmask;
-	char buff[1024];
 	struct sockaddr_in *sa;
 	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
 			ifi != NULL; ifi = ifi->ifi_next) {
@@ -54,24 +53,23 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 		printf(" Server is local, ");
 	else 
 		printf(" Server is not local, ");
-	printf("IPserver: %s, ",
-			inet_ntop(AF_INET, &servaddr->sin_addr, buff, sizeof(buff)));
-	printf("IPclient: %s\n",
-			inet_ntop(AF_INET, &cliaddr->sin_addr, buff, sizeof(buff)));
+	printf("IPserver: %s, ", inet_ntoa(servaddr->sin_addr));
+	printf("IPclient: %s\n", inet_ntoa(cliaddr->sin_addr));
 	free_ifi_info_plus(ifihead);
 }
 
 int main(int argc, char **argv)
 {
-	int sockfd, sport, ret, ssize, rseed, mean;
+	int sockfd, sport, ret, ssize, rseed, mean, servfd;
 	float prob;
-	const int on = 1;
-	pid_t pid;
 	char serveripaddr[16], *temp, filename[PATH_MAX];
 	struct sockaddr_in servaddr, cliaddr;
 	FILE *infile;
 	char *ifile = "client.in";
+	struct sockaddr_storage ss;
 	uint32_t serverip;
+	socklen_t len;
+
 	infile = fopen(ifile, "r");
 	if(infile == NULL)
 	{
@@ -94,6 +92,7 @@ int main(int argc, char **argv)
 	sport = readint(infile);
 	servaddr.sin_port   = htons(sport);
 	readstring(filename, PATH_MAX, infile);
+	printf("%d\n",servaddr.sin_port);
 	ssize = readint(infile);
 	rseed = readint(infile);
 	prob = readfloat(infile);
@@ -106,5 +105,31 @@ int main(int argc, char **argv)
 	bzero(&cliaddr, sizeof(cliaddr));
 	cliaddr.sin_family = AF_INET;
 	resolveips(&servaddr, &cliaddr, serverip);
+	cliaddr.sin_port = htons(0);
+	
+	sockfd = Socket (AF_INET, SOCK_DGRAM, 0);
+	servfd = Socket (AF_INET, SOCK_DGRAM, 0);
+	
+	Bind(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
+	len = sizeof(cliaddr);
+	if (getsockname(sockfd, (SA *) &cliaddr, &len) < 0)
+	{
+		perror("Error getting socket info for client.");
+		close(sockfd);
+		exit(1);
+	}
+	printf(" Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
+
+	len = sizeof(servaddr);
+	Connect(servfd, (SA *) &servaddr, len);
+	if (getpeername(servfd, (SA *) &servaddr, &len) < 0)
+	{
+		perror("Error getting socket info for server.");
+		close(sockfd);
+		exit(1);
+	}
+	
+	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
+
 }
 
