@@ -1,8 +1,8 @@
 UNAME := $(shell uname)
 
-ifeq ($(UNAME), Solaris)
+ifeq ($(UNAME), SunOS)
 	slib = /home/courses/cse533/Stevens/unpv13e_solaris2.10
-	LIBS =  -lsocket ${slib}/libunp.a
+	LIBS =  -lsocket -lnsl ${slib}/libunp.a
 else
 	slib = ../unpv13e
 	LIBS =  ${slib}/libunp.a
