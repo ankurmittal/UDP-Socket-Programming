@@ -1,10 +1,15 @@
+UNAME := $(shell uname)
 
-#slib = ../unpv13e
-slib = /home/courses/cse533/Stevens/unpv13e_solaris2.10
+ifeq ($(UNAME), Solaris)
+	slib = /home/courses/cse533/Stevens/unpv13e_solaris2.10
+	LIBS =  -lsocket ${slib}/libunp.a
+else
+	slib = ../unpv13e
+	LIBS =  ${slib}/libunp.a
+endif
 
 CC = gcc
 
-LIBS =  -lsocket ${slib}/libunp.a
 
 FLAGS =  -g -O2
 CFLAGS = ${FLAGS} -I${slib}/lib
