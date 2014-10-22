@@ -14,8 +14,8 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr)
 	struct sockaddr_in *sa;
 	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
 			ifi != NULL; ifi = ifi->ifi_next) {
-		printf(" IP addr: %s, Network Mask: %s\n", Sock_ntop_host(ifi->ifi_addr, sizeof(*ifi->ifi_addr)),
-				Sock_ntop_host(ifi->ifi_ntmaddr, sizeof(*ifi->ifi_ntmaddr)));
+		printf(" IP addr: %s, ", Sock_ntop_host(ifi->ifi_addr, sizeof(*ifi->ifi_addr)));
+		printf("Network Mask: %s\n", Sock_ntop_host(ifi->ifi_ntmaddr, sizeof(*ifi->ifi_ntmaddr)));
 
 		if(!issamehost)
 		{
@@ -52,8 +52,9 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr)
 		printf(" Sever is local, ");
 	else 
 		printf(" Server is not local, ");
-	printf("IPserver: %s, IPclient: %s\n",
-			inet_ntop(AF_INET, &servaddr->sin_addr, buff, sizeof(buff)),
+	printf("IPserver: %s, ",
+			inet_ntop(AF_INET, &servaddr->sin_addr, buff, sizeof(buff)));
+	printf("IPclient: %s\n",
 			inet_ntop(AF_INET, &cliaddr->sin_addr, buff, sizeof(buff)));
 	free_ifi_info_plus(ifihead);
 }
