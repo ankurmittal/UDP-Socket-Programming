@@ -108,9 +108,11 @@ int main(int argc, char **argv)
 	cliaddr.sin_port = htons(0);
 	
 	sockfd = Socket (AF_INET, SOCK_DGRAM, 0);
-	servfd = Socket (AF_INET, SOCK_DGRAM, 0);
-	
-	Bind(sockfd, (SA *) &cliaddr, sizeof(cliaddr));
+
+	len = sizeof(servaddr);
+	Connect(sockfd, (SA *) &servaddr, len);
+
+	//if(bind(sockfd, (SA *) &cliaddr, sizeof(cliaddr) == -1))
 	len = sizeof(cliaddr);
 	if (getsockname(sockfd, (SA *) &cliaddr, &len) < 0)
 	{
@@ -119,10 +121,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	printf(" Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
-
-	len = sizeof(servaddr);
-	Connect(servfd, (SA *) &servaddr, len);
-	if (getpeername(servfd, (SA *) &servaddr, &len) < 0)
+	if (getpeername(sockfd, (SA *) &servaddr, &len) < 0)
 	{
 		perror("Error getting socket info for server.");
 		close(sockfd);
@@ -131,5 +130,6 @@ int main(int argc, char **argv)
 	
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
+	Write(sockfd, filename, strlen(filename));
 }
 
