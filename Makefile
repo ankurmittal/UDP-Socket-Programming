@@ -6,6 +6,7 @@ ifeq ($(UNAME), SunOS)
 else
 	slib = ../unpv13e
 	LIBS =  ${slib}/libunp.a
+	UBUNTUF = -DUBUNTU
 endif
 
 CC = gcc
@@ -24,7 +25,7 @@ prifinfo_plus.o: prifinfo_plus.c
 	${CC} ${CFLAGS} -c prifinfo_plus.c
 	
 client: client.o 
-	${CC} ${FLAGS} -o client client.o  get_ifi_info_plus.o ${LIBS}
+	${CC} ${FLAGS} ${UBUNTUF} -o client client.o  get_ifi_info_plus.o ${LIBS}
 client.o: client.c 
 	${CC} ${CFLAGS} -c client.c
 

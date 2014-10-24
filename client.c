@@ -109,18 +109,14 @@ int main(int argc, char **argv)
 	
 	sockfd = Socket (AF_INET, SOCK_DGRAM, 0);
 
+#ifndef UBUNTU
+	len = sizeof(cliaddr);
+	if(bind(sockfd, (SA *) &cliaddr, len) < 0) {
+		perror("Not able to make local connection");
+	}
+#endif
 	len = sizeof(servaddr);
 	Connect(sockfd, (SA *) &servaddr, len);
-
-	//if(bind(sockfd, (SA *) &cliaddr, sizeof(cliaddr) == -1))
-	len = sizeof(cliaddr);
-	if (getsockname(sockfd, (SA *) &cliaddr, &len) < 0)
-	{
-		perror("Error getting socket info for client.");
-		close(sockfd);
-		exit(1);
-	}
-	printf(" Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
 	if (getpeername(sockfd, (SA *) &servaddr, &len) < 0)
 	{
 		perror("Error getting socket info for server.");
@@ -128,6 +124,15 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	
+	len = sizeof(cliaddr);
+	if (getsockname(sockfd, (SA *) &cliaddr, &len) < 0)
+	{
+		perror("Error getting socket info for client.");
+		close(sockfd);
+		exit(1);
+	}
+
+	printf(" Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
 	Write(sockfd, filename, strlen(filename));
