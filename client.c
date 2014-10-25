@@ -3,7 +3,7 @@
 #include "limits.h"
 #include "lib/common.h"
 
-static const uint32_t localaddr = 127*256*256*256 + 1;
+static const uint32_t localaddr = (127 << 24) + 1;
 static int issamehost = 0, islocal = 0;
 
 void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint32_t serverip)
@@ -63,11 +63,12 @@ int main(int argc, char **argv)
 	int sockfd, sport, ret, ssize, rseed, mean, servfd;
 	float prob;
 	char serveripaddr[16], *temp, filename[PATH_MAX];
-	struct sockaddr_in servaddr, cliaddr;
+	struct sockaddr_in servaddr, cliaddr, taddr;
 	FILE *infile;
 	char *ifile = "client.in";
 	struct sockaddr_storage ss;
 	uint32_t serverip;
+	char buf[512];
 	socklen_t len;
 
 	infile = fopen(ifile, "r");
@@ -134,6 +135,22 @@ int main(int argc, char **argv)
 	printf(" Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
-	Write(sockfd, filename, strlen(filename));
+	write(sockfd, filename, strlen(filename));
+	len = recvfrom(sockfd, buf, 512, 0, NULL, NULL);
+	
+	puts(buf);
+	taddr.sin_family = AF_UNSPEC;
+
+	servaddr.sin_port   = strtol(buf, NULL, 10);
+
+	connect(sockfd, (SA *) &taddr, len);
+	connect(sockfd, (SA *) &servaddr, len);
+	if (getpeername(sockfd, (SA *) &servaddr, &len) < 0)
+	{
+		perror("Error getting socket info for server.");
+		close(sockfd);
+		exit(1);
+	}
+	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 }
 
