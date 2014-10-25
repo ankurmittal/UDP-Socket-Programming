@@ -2,11 +2,11 @@ UNAME := $(shell uname)
 
 ifeq ($(UNAME), SunOS)
 	slib = /home/courses/cse533/Stevens/unpv13e_solaris2.10
-	LIBS =  -lsocket -lnsl ${slib}/libunp.a
+	LIBS =  -lsocket -lnsl lib/mylib.a ${slib}/libunp.a
 else
 	slib = ../unpv13e
-	LIBS =  ${slib}/libunp.a
-	UBUNTUF = -DUBUNTU
+	LIBS =  lib/mylib.a ${slib}/libunp.a
+	UBUNTUF=-DUBUNTU
 endif
 
 CC = gcc
@@ -15,25 +15,22 @@ CC = gcc
 FLAGS =  -g -O2
 CFLAGS = ${FLAGS} -I${slib}/lib
 
-all: get_ifi_info_plus.o prifinfo_plus.o client server
-	${CC} -o prifinfo_plus prifinfo_plus.o get_ifi_info_plus.o ${LIBS}
+all: libmake client server
 
-get_ifi_info_plus.o: get_ifi_info_plus.c
-	${CC} ${CFLAGS} -c get_ifi_info_plus.c
+libmake: 
+	${MAKE} -C lib
 
-prifinfo_plus.o: prifinfo_plus.c
-	${CC} ${CFLAGS} -c prifinfo_plus.c
-	
-client: client.o 
-	${CC} ${FLAGS} ${UBUNTUF} -o client client.o  get_ifi_info_plus.o ${LIBS}
+client: client.o libmake 
+	${CC} ${FLAGS} -o client client.o lib/mylib.a ${LIBS}
 client.o: client.c 
-	${CC} ${CFLAGS} -c client.c
+	${CC} ${CFLAGS} ${UBUNTUF} -c client.c
 
-server: server.o 
-	${CC} ${FLAGS} -o server server.o  get_ifi_info_plus.o ${LIBS}
+server: server.o libmake
+	${CC} ${FLAGS} -o server server.o lib/mylib.a ${LIBS}
 server.o: server.c 
 	${CC} ${CFLAGS} -c server.c
 
 clean:
-	rm prifinfo_plus client server *.o
+	rm client server *.o
+	${MAKE} -C lib clean
 

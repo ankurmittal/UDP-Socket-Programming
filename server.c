@@ -1,5 +1,5 @@
-#include "unpifiplus.h"
-#include "common.h"
+#include "lib/unpifiplus.h"
+#include "lib/common.h"
 
 typedef struct {
 	int sockfd;

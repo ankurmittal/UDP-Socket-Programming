@@ -1,7 +1,7 @@
 
-#include "unpifiplus.h"
+#include "lib/unpifiplus.h"
 #include "limits.h"
-#include "common.h"
+#include "lib/common.h"
 
 static const uint32_t localaddr = 127*256*256*256 + 1;
 static int issamehost = 0, islocal = 0;
@@ -92,7 +92,6 @@ int main(int argc, char **argv)
 	sport = readint(infile);
 	servaddr.sin_port   = htons(sport);
 	readstring(filename, PATH_MAX, infile);
-	printf("%d\n",servaddr.sin_port);
 	ssize = readint(infile);
 	rseed = readint(infile);
 	prob = readfloat(infile);
