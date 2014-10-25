@@ -20,12 +20,12 @@ all: libmake client server
 libmake: 
 	${MAKE} -C lib
 
-client: client.o libmake 
+client: client.o lib/mylib.a lib/common.h
 	${CC} ${FLAGS} -o client client.o lib/mylib.a ${LIBS}
 client.o: client.c 
 	${CC} ${CFLAGS} ${UBUNTUF} -c client.c
 
-server: server.o libmake
+server: server.o lib/mylib.a lib/common.h
 	${CC} ${FLAGS} -o server server.o lib/mylib.a ${LIBS}
 server.o: server.c 
 	${CC} ${CFLAGS} -c server.c
