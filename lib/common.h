@@ -2,6 +2,8 @@
 #ifndef	__common_h
 #define	__common_h
 
+#define SEGLENGHT 512
+
 struct hdr {
 	uint32_t seq; /* sequence # */
 	int window_size; /* window size*/
@@ -54,5 +56,7 @@ float readfloat(FILE *f)
 	}
 	return temp;
 }
+
+int datalenght = SEGLENGHT - sizeof(struct hdr);
 
 #endif	
