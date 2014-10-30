@@ -2,6 +2,12 @@
 #ifndef	__common_h
 #define	__common_h
 
+struct hdr {
+	uint32_t seq; /* sequence # */
+	int window_size; /* window size*/
+	uint32_t ts; /* timestamp when sent */
+};
+
 void *readstring(char *buf, int bufsize, FILE *f) 
 {
 	char *c;
@@ -16,7 +22,7 @@ void *readstring(char *buf, int bufsize, FILE *f)
 	s = strlen(buf);
 	if(buf[s-1] == '\n')
 		buf[s - 1]  = 0;
-	
+
 }
 
 int readint(FILE *f) 
