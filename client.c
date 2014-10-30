@@ -69,6 +69,9 @@ int main(int argc, char **argv)
 	struct sockaddr_storage ss;
 	uint32_t serverip;
 	char buf[512];
+	struct iovec iovsend[2];
+	struct hdr sendhdr;
+	struct msghdr msgsend;
 	socklen_t len;
 
 	infile = fopen(ifile, "r");
@@ -135,10 +138,11 @@ int main(int argc, char **argv)
 	printf(" Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
+
 	write(sockfd, filename, strlen(filename));
 	len = recvfrom(sockfd, buf, 512, 0, NULL, NULL);
-	
-	puts(buf);
+
+	puts(buf + 12);
 	taddr.sin_family = AF_UNSPEC;
 
 	servaddr.sin_port   = strtol(buf, NULL, 10);

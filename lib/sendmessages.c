@@ -17,6 +17,7 @@ void init_sender(int window, int f)
 	int i;
 	sw = sst = window;
 	msgsend = (struct msghdr *) malloc(sw * sizeof(struct msghdr));
+	memset(msgsend, 0, sw * sizeof(struct msghdr));
 	for(i =0; i < sw; i++)
 	{
 		msgsend[i].msg_iov = (struct iovec *) malloc(2 * sizeof(struct iovec));
@@ -48,8 +49,8 @@ void insertmsg(void *outbuff, int outlen)
 		head = tail = 0;
 	else 
 		tail = (tail + 1)%sw;
-	struct msghdr *mh = &msgsend[head];
-	struct hdr * hd = (struct hdr *)mh->msg_iov[0].iov_base;
+	struct msghdr *mh = &msgsend[tail];
+	struct hdr * hd = (struct hdr *)(mh->msg_iov[0].iov_base);
 	hd->seq = sequence++;
 	mh->msg_iov[1].iov_base = malloc(outlen);
 	memcpy(mh->msg_iov[1].iov_base, outbuff, outlen);
@@ -85,9 +86,9 @@ static struct hdr *gethdr(struct msghdr *mh)
 
 int dg_send()
 {
-	ssize_t n, window, awindow = 1;
+	ssize_t window, awindow = 1;
 	uint32_t startseq, lastseq = -1;
-	int usesecondaryfd = 0, dupcount, i;
+	int usesecondaryfd = 0, dupcount, i, n;
 	struct iovec iovrecv[1];
 	struct msghdr *m;
 	struct hdr *h, recvhdr;
@@ -103,7 +104,7 @@ int dg_send()
 	msgrecv.msg_name = NULL;
 	msgrecv.msg_namelen = 0;
 	msgrecv.msg_iov = iovrecv;
-	msgrecv.msg_iovlen = 2;
+	msgrecv.msg_iovlen = 1;
 	iovrecv[0].iov_base = &recvhdr;
 	iovrecv[0].iov_len = sizeof(struct hdr);
 	sigaction(SIGALRM, &sa, NULL);
@@ -118,6 +119,7 @@ sendagain:
 			break;
 		current = (current + 1)%sw;
 		m = &msgsend[current];
+		printf("%p\n",m);
 		h = gethdr(m);
 		if(i == 0)
 			startseq = h->seq;
@@ -125,13 +127,18 @@ sendagain:
 		n = sendmsg(fd, m, 0);
 		if(usesecondaryfd && secondaryfd)
 			n = sendmsg(secondaryfd, m, 0);
+		if(n < 0)
+		{
+			perror(" Error in sending data");
+			return;
+		}
 		packintransit++;
-		printf("%lu\n", n);
+		printf(" data sent %d\n", n);
 	}
 	usesecondaryfd = 0;
 	
 	setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
-	printf("\n Timer started at %u\n", rtt_ts_plus(&rttinfo));
+	//printf("\n Timer started at %u\n", rtt_ts_plus(&rttinfo));
 	if (sigsetjmp(jmpbuf, 1) != 0) {
 		if (rtt_timeout_plus(&rttinfo) < 0) {
 			err_msg("No response from client, giving up");
@@ -146,6 +153,7 @@ sendagain:
 		cwn = 1;
 		usesecondaryfd = 1;
 		current = (head + sw - 1)%sw;
+		packintransit = 0;
 		goto sendagain;
 	}
 	do {
@@ -192,10 +200,10 @@ sendagain:
 static void setitimerwrapper(struct itimerval *timer, long time)
 {
 	timer->it_value.tv_sec = 0;
-	timer->it_value.tv_usec = time;
-	
+	timer->it_value.tv_usec = time*1000;
+	printf("Setting timer to:%ld\n",time);
 	timer->it_interval.tv_sec = 0;
-	timer->it_interval.tv_usec = time;
+	timer->it_interval.tv_usec = time*1000;
 	setitimer (ITIMER_REAL, timer, NULL);
 }
 

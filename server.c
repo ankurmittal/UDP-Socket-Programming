@@ -3,6 +3,7 @@
 #include "lib/linkedlist.h"
 
 static const uint32_t localaddr = (127<<24) | 1;
+static int window;
 
 typedef struct {
 	int sockfd;
@@ -16,17 +17,16 @@ typedef struct {
 	struct in_addr addr;
 }NodeData;
 
-void handleChild(struct sockaddr_in *caddr, int cport, char *msg, int n, SockStruct *server) {
+void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 
 	struct sockaddr_in servaddr;
 	socklen_t len;
-	int port, sockfd, reuse = 1, err;
+	int port, sockfd, reuse = 1, err, n;
 	char buf[6];
 	uint32_t clientip, serverip, servernetmask, serversubnet;
-
-	printf("Client port: %d\n", cport);
-	printf("Client IP Address: %s\n", inet_ntoa(caddr->sin_addr));
-	printf("Data: %s, Size: %d\n", msg, n);
+	len = sizeof(*caddr);
+	printf(" Filename recieved from client: %s\n", msg);
+	printf(" Client Address: %s\n", Sock_ntop((SA *) caddr, len));
 
 	clientip = htonl(caddr->sin_addr.s_addr);
 	serverip = htonl(server->addr->s_addr);
@@ -34,7 +34,7 @@ void handleChild(struct sockaddr_in *caddr, int cport, char *msg, int n, SockStr
 	serversubnet = htonl(server->subaddr->s_addr);
 
 	if(serverip == localaddr || serversubnet == clientip & servernetmask) {
-		printf("client is local.\n");
+		printf(" Client is local.\n");
 		// DONTROUTE
 	}
 
@@ -42,6 +42,7 @@ void handleChild(struct sockaddr_in *caddr, int cport, char *msg, int n, SockStr
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(0);
+	servaddr.sin_addr = *server->addr;
 
 	len = sizeof(servaddr);
 
@@ -50,19 +51,42 @@ void handleChild(struct sockaddr_in *caddr, int cport, char *msg, int n, SockStr
 		perror("Not able to make local connection");
 #endif
 
-	Connect(sockfd, (SA *)caddr, sizeof(*caddr));
-	if (getsockname(sockfd, (SA *) &servaddr, &len) < 0) {
-		perror("Error getting socket info for new socket.");
+	connect(sockfd, (SA *)caddr, sizeof(*caddr));
+	Connect(server->sockfd, (SA *)caddr, sizeof(*caddr));
+
+	if (getpeername(sockfd, (SA *) &caddr, &len) < 0)
+	{
+		perror("Error getting socket info for server.");
 		close(sockfd);
 		exit(1);
 	}
+	
+	if (getsockname(sockfd, (SA *) &servaddr, &len) < 0)
+	{
+		perror("Error getting socket info for client.");
+		close(sockfd);
+		exit(1);
+	}
+	printf(" Client Address: %s\n", Sock_ntop((SA *) &caddr, len));
+	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
+
+	
+	init_sender(window, server->sockfd);
 
 	port = ntohs(servaddr.sin_port);
-	sprintf(buf, "%d", port);
+	n = sprintf(buf, "%d", port);
+	setsecondaryfd(sockfd);
+	writetowindow(buf, n);
+	dg_send();
 	
-	Write(server->sockfd, buf, strlen(buf));
-	//Sendto(server->sockfd, buf, strlen(buf), 0, (SA *)caddr, sizeof(*caddr));
-	
+}
+
+int writetowindow(char * buf, int len)
+{
+	if(!isswfull())
+		insertmsg(buf, len);
+	else
+		return -1;
 }
 
 int ll_find(ll_node *ll_head, NodeData *data) {
@@ -91,11 +115,10 @@ void ll_print(ll_node *ll_head) {
 
 int main(int argc, char **argv)
 {
-	int i=0, sockfd, maxfd=0, port=0, window=0, count=0;
+	int i=0, sockfd, maxfd=0, port=0, count=0;
 	pid_t childpid, pid;
 	const int on = 1;
 	struct ifi_info *ifi, *ifihead;
-	struct in_addr caddr;
 	struct sockaddr_in *sa, ca;
 	socklen_t len, clilen;
 	char msg[MAXLINE];
@@ -126,12 +149,11 @@ int main(int argc, char **argv)
 
 	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1), i=0; ifi != NULL; ifi = ifi->ifi_next, i++) {
 		sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
-		Setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 		sa = (struct sockaddr_in *) ifi->ifi_addr;
 		sa->sin_family = AF_INET;
 		sa->sin_port = htons(port);
 		Bind(sockfd, (SA *) sa, sizeof(*sa));
-		array[i].addr = &((struct sockaddr_in *) ifi->ifi_addr)->sin_addr;
+		array[i].addr = &(sa->sin_addr);
 		array[i].ntmaddr = &((struct sockaddr_in *) ifi->ifi_ntmaddr)->sin_addr;
 		subaddr.s_addr = (*array[i].addr).s_addr & (*array[i].ntmaddr).s_addr;
 		array[i].subaddr = &subaddr;
@@ -141,7 +163,6 @@ int main(int argc, char **argv)
 		printf("Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
 		printf("Subnet Address: %s\n", inet_ntoa(*(array[i].subaddr)));
 
-		listen(sockfd, LISTENQ);
 	}
 
 	for( ; ; ) {
@@ -154,17 +175,19 @@ int main(int argc, char **argv)
 
 		for(i=0; i<count; i++) {
 			if(FD_ISSET(array[i].sockfd, &rset)) {
-				FD_CLR(array[i].sockfd, &rset);
 				printf("\nIn select for sockfd: %d\n", array[i].sockfd);
 
 				clilen = sizeof(ca);
 				n = recvfrom(array[i].sockfd, msg, MAXLINE, 0, (SA *)&ca, &clilen);
-				cport = ntohs(ca.sin_port);
-				caddr = ca.sin_addr;
+				if(n < 0)
+				{
+					perror("Error reading from client");
+					exit(1);
+				}
 
 				ll_data = (NodeData *) malloc(sizeof(NodeData));
-				ll_data->port = cport;
-				ll_data->addr = caddr;
+				ll_data->port = ca.sin_port;
+				ll_data->addr = ca.sin_addr;
 
 				if (!ll_find(ll_head, ll_data)) {
 					if(ll_head == NULL)
@@ -176,13 +199,13 @@ int main(int argc, char **argv)
 
 					if((childpid = fork()) == 0) {
 						for(j = 0; j<count; j++) {
-							if(j!=i)
+							if(j != i)
 								close(array[i].sockfd);
 						}
 						printf("IP Address: %s\n", inet_ntoa(*(array[i].addr)));
 						printf("Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
 						printf("Subnet Address: %s\n", inet_ntoa(*(array[i].subaddr)));
-						handleChild(&ca, cport, msg, n, &array[i]);
+						handleChild(&ca, msg, &array[i]);
 						goto exitLabel;
 					}
 				}
