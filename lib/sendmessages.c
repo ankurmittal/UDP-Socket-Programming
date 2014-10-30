@@ -14,7 +14,6 @@ static void sig_alrm(int signo);
 static sigjmp_buf jmpbuf;
 
 
-static void setitimerwrapper(struct itimerval *timer, long time);
 void init_sender(int window, int f) 
 {
 	int i;
@@ -207,15 +206,6 @@ sendagain:
 	goto sendagain;
 }
 
-static void setitimerwrapper(struct itimerval *timer, long time)
-{
-	timer->it_value.tv_sec = time / 1000;
-	timer->it_value.tv_usec = (time%1000) * 1000;
-	printf("Setting timer to:%ld\n",time);
-	timer->it_interval.tv_sec = time / 1000;
-	timer->it_interval.tv_usec = (time%1000) * 1000;
-	setitimer (ITIMER_REAL, timer, NULL);
-}
 
 static void sig_alrm(int signo)
 {
