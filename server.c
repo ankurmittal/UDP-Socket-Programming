@@ -46,8 +46,6 @@ void handleChild(struct sockaddr_in *caddr, int cport, char *msg, int n, SockStr
 	len = sizeof(servaddr);
 
 #ifndef UBUNTU
-	printf("\nBIND\n");
-
 	if(bind(sockfd, (SA *) &servaddr, len) < 0)
 		perror("Not able to make local connection");
 #endif
@@ -123,8 +121,8 @@ int main(int argc, char **argv)
 		count++;	
 	}
 
+	printf("\nPort: %d, Window: %d\n", port, window);
 	array = (SockStruct *) malloc(count * sizeof(SockStruct));
-
 
 	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1), i=0; ifi != NULL; ifi = ifi->ifi_next, i++) {
 		sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
@@ -139,7 +137,6 @@ int main(int argc, char **argv)
 		array[i].subaddr = &subaddr;
 		array[i].sockfd = sockfd;
 
-		printf("\nPort: %d, Window: %d\n", port, window);
 		printf("IP Address: %s\n", inet_ntoa(*(array[i].addr)));
 		printf("Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
 		printf("Subnet Address: %s\n", inet_ntoa(*(array[i].subaddr)));
