@@ -20,7 +20,7 @@ rtt_minmax(long rto)
 }
 
 void
-rtt_init(struct rtt_info *ptr)
+rtt_init_plus(struct rtt_info *ptr)
 {
 	struct timeval	tv;
 
@@ -43,7 +43,7 @@ rtt_init(struct rtt_info *ptr)
 
 /* include rtt_ts */
 uint32_t
-rtt_ts(struct rtt_info *ptr)
+rtt_ts_plus(struct rtt_info *ptr)
 {
 	uint32_t		ts;
 	struct timeval	tv;
@@ -54,13 +54,13 @@ rtt_ts(struct rtt_info *ptr)
 }
 
 void
-rtt_newpack(struct rtt_info *ptr)
+rtt_newpack_plus(struct rtt_info *ptr)
 {
 	ptr->rtt_nrexmt = 0;
 }
 
 long
-rtt_start(struct rtt_info *ptr)
+rtt_start_plus(struct rtt_info *ptr)
 {
 	ptr->rtt_rto;
 }

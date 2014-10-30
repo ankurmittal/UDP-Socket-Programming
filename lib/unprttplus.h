@@ -18,12 +18,12 @@ struct rtt_info {
 
 				/* function prototypes */
 void	 rtt_debug(struct rtt_info *);
-void	 rtt_init(struct rtt_info *);
-void	 rtt_newpack(struct rtt_info *);
-long	 rtt_start(struct rtt_info *);
-void	 rtt_stop(struct rtt_info *, uint32_t);
-int		 rtt_timeout(struct rtt_info *);
-uint32_t rtt_ts(struct rtt_info *);
+void	 rtt_init_plus(struct rtt_info *);
+void	 rtt_newpack_plus(struct rtt_info *);
+long	 rtt_start_plus(struct rtt_info *);
+void	 rtt_stop_plus(struct rtt_info *, uint32_t);
+int		 rtt_timeout_plus(struct rtt_info *);
+uint32_t rtt_ts_plus(struct rtt_info *);
 
 extern int	rtt_d_flag;	/* can be set to nonzero for addl info */
 

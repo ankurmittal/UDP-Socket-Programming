@@ -3,7 +3,7 @@
 #include <setjmp.h>
 #define RTT_DEBUG
 static struct rtt_info rttinfo;
-static int rttinit = 0, cwn = 1, sst = 0, sw = 0, rw = 1, packintransit = 0, lastseq = 0, secondaryfd = 0;
+static int rttinit = 0, cwn = 1, sst = 0, sw = 0, rw = 1, packintransit = 0, lastseq = 0, secondaryfd = 0, fd = 0;
 static uint32_t sequence = 0;
 static int head = -1, tail = -1, current = -1, csize = 0;
 static struct msghdr *msgsend =  NULL;
@@ -12,7 +12,7 @@ struct hdr *sendhdr, *recvhdr;
 static void sig_alrm(int signo);
 static sigjmp_buf jmpbuf;
 
-void init_sender(int window) 
+void init_sender(int window, int f) 
 {
 	int i;
 	sw = sst = window;
@@ -24,6 +24,7 @@ void init_sender(int window)
 		msgsend[i].msg_iov[0].iov_len = sizeof(struct hdr);
 		msgsend[i].msg_iovlen = 2;
 	}
+	fd = f;
 }
 
 void setsecondaryfd(int s)
@@ -31,7 +32,17 @@ void setsecondaryfd(int s)
 	secondaryfd = s;
 }
 
-static void insertmsg(void *outbuff, int outlen)
+void setprimaryfd(int s)
+{
+	fd = s;
+}
+
+int isswfull()
+{
+	return csize == sw;
+}
+static void setitimerwrapper(struct itimerval *timer, long time);
+void insertmsg(void *outbuff, int outlen)
 {
 	if(head == -1)
 		head = tail = 0;
@@ -72,7 +83,7 @@ static struct hdr *gethdr(struct msghdr *mh)
 	return (struct hdr *)mh->msg_iov[0].iov_base;
 }
 
-int dg_send(int fd)
+int dg_send()
 {
 	ssize_t n, window, awindow = 1;
 	uint32_t startseq, lastseq = -1;
@@ -80,8 +91,12 @@ int dg_send(int fd)
 	struct iovec iovrecv[1];
 	struct msghdr *m;
 	struct hdr *h, recvhdr;
+	struct sigaction sa;
+	struct itimerval timer;
+	memset (&sa, 0, sizeof (sa));
+	sa.sa_handler = &sig_alrm;
 	if (rttinit == 0) {
-		rtt_init(&rttinfo); /* first time we're called */
+		rtt_init_plus(&rttinfo); /* first time we're called */
 		rttinit = 1;
 		rtt_d_flag = 1;
 	}
@@ -91,8 +106,8 @@ int dg_send(int fd)
 	msgrecv.msg_iovlen = 2;
 	iovrecv[0].iov_base = &recvhdr;
 	iovrecv[0].iov_len = sizeof(struct hdr);
-	signal(SIGALRM, sig_alrm);
-	rtt_newpack(&rttinfo); /* initialize for this packet */
+	sigaction(SIGALRM, &sa, NULL);
+	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
 sendagain:
 	window = min(cwn - packintransit, sw);
 	window = min(awindow, window);
@@ -106,7 +121,7 @@ sendagain:
 		h = gethdr(m);
 		if(i == 0)
 			startseq = h->seq;
-		h->ts = rtt_tt(&rttinfo);
+		h->ts = rtt_ts_plus(&rttinfo);
 		n = sendmsg(fd, m, 0);
 		if(usesecondaryfd && secondaryfd)
 			n = sendmsg(secondaryfd, m, 0);
@@ -114,15 +129,18 @@ sendagain:
 		printf("%lu\n", n);
 	}
 	usesecondaryfd = 0;
-
-	alarm(rtt_start(&rttinfo)); /* calc timeout value & start timer */
+	
+	setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
+	printf("\n Timer started at %u\n", rtt_ts_plus(&rttinfo));
 	if (sigsetjmp(jmpbuf, 1) != 0) {
-		if (rtt_timeout(&rttinfo) < 0) {
+		if (rtt_timeout_plus(&rttinfo) < 0) {
 			err_msg("No response from client, giving up");
 			rttinit = 0; /* reinit in case we're called again */
 			errno = ETIMEDOUT;
 			return (-1);
 		}
+		printf("Timeout, resending");
+		printf(", timeout at: %u\n", rtt_ts_plus(&rttinfo));
 		sst = min(cwn/2, sw);
 		sst = max(sst, 2);
 		cwn = 1;
@@ -145,26 +163,40 @@ sendagain:
 		}
 		if(dupcount == 3)
 		{
-			
+			setitimerwrapper(&timer, 0);
 			m = &msgsend[head];
 			h = gethdr(m);
-			h->ts = rtt_tt(&rttinfo);
+			h->ts = rtt_ts_plus(&rttinfo);
 			n = sendmsg(fd, m, 0);
 			dupcount == 0;
-			alarm(rtt_start(&rttinfo)); /* calc timeout value & start timer */
+			setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
 		}
 	} while (recvhdr.seq < startseq);
-	alarm(0); /* stop SIGALRM timer */
-	/* calculate & store new RTT estimator values */
-	rtt_stop(&rttinfo, rtt_ts(&rttinfo) - recvhdr.ts);
+
+	setitimerwrapper(&timer, 0);
+	
+	rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo) - recvhdr.ts);
 	h = gethdr(&msgsend[head]);
 	cwn = cwn + recvhdr.seq - h->seq;
 	awindow = h->window_size;
+	packintransit = packintransit - recvhdr.seq + h->seq;
 	for(i = 0; i < recvhdr.seq - h->seq; i++)
 	{
 		deletefromsw();
 	}
+	if(csize == 0)
+		return;
 	goto sendagain;
+}
+
+static void setitimerwrapper(struct itimerval *timer, long time)
+{
+	timer->it_value.tv_sec = 0;
+	timer->it_value.tv_usec = time;
+	
+	timer->it_interval.tv_sec = 0;
+	timer->it_interval.tv_usec = time;
+	setitimer (ITIMER_REAL, timer, NULL);
 }
 
 static void sig_alrm(int signo)

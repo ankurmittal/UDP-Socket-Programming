@@ -12,19 +12,21 @@ endif
 CC = gcc
 
 SRC=$(wildcard *.c)
+OBJS=$(SRC:.c=.o)
+
 
 FLAGS =  -g -O2
 CFLAGS = ${FLAGS} -I${slib}/lib
 
-all: buildAll mylib.a prifinfo_plus
+all: ${OBJS} mylib.a prifinfo_plus
 
 prifinfo_plus: prifinfo_plus.o get_ifi_info_plus.o
 	${CC} -o prifinfo_plus prifinfo_plus.o get_ifi_info_plus.o ${LIBS}
 
-mylib.a: get_ifi_info_plus.o rtt_plus.o linkedlist.o
-	ar r mylib.a rtt_plus.o get_ifi_info_plus.o linkedlist.o
+mylib.a: get_ifi_info_plus.o rtt_plus.o linkedlist.o sendmessages.o common.o
+	ar r mylib.a $^
 
-buildAll: $(SRC)
+%.o: %.c
 	${CC} -c $^ $(CFLAGS)
 
 clean:

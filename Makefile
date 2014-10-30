@@ -31,6 +31,6 @@ server.o: server.c
 	${CC} ${CFLAGS} ${UBUNTUF} -c server.c
 
 clean:
-	rm client server *.o
+	@rm client server *.o ||:
 	${MAKE} -C lib clean
 
