@@ -11,11 +11,16 @@ typedef struct {
 	struct in_addr *subaddr;
 }SockStruct;
 
+typedef struct {
+	int port;
+	struct in_addr addr;
+}NodeData;
+
 void handleChild(struct sockaddr_in *caddr, int cport, char *msg, int n, SockStruct *server) {
 
 	struct sockaddr_in servaddr;
 	socklen_t len;
-	int port, sockfd;
+	int port, sockfd, reuse = 1, err;
 	char buf[6];
 	uint32_t clientip, serverip, servernetmask, serversubnet;
 
@@ -39,12 +44,14 @@ void handleChild(struct sockaddr_in *caddr, int cport, char *msg, int n, SockStr
 	servaddr.sin_port = htons(0);
 
 	len = sizeof(servaddr);
+
 #ifndef UBUNTU
 	printf("\nBIND\n");
+
 	if(bind(sockfd, (SA *) &servaddr, len) < 0)
 		perror("Not able to make local connection");
 #endif
-printf("\n cport: %d\n", cport);
+
 	Connect(sockfd, (SA *)caddr, sizeof(*caddr));
 	if (getsockname(sockfd, (SA *) &servaddr, &len) < 0) {
 		perror("Error getting socket info for new socket.");
@@ -55,8 +62,33 @@ printf("\n cport: %d\n", cport);
 	port = ntohs(servaddr.sin_port);
 	sprintf(buf, "%d", port);
 	
-	//Write(server->sockfd, buf, strlen(buf));
-	Sendto(server->sockfd, buf, strlen(buf), 0, (SA *)caddr, sizeof(*caddr));
+	Write(server->sockfd, buf, strlen(buf));
+	//Sendto(server->sockfd, buf, strlen(buf), 0, (SA *)caddr, sizeof(*caddr));
+	
+}
+
+int ll_find(ll_node *ll_head, NodeData *data) {
+	NodeData *ll_data;
+	if(ll_head == NULL)
+		return 0;
+	do {
+		ll_data = (NodeData *)ll_head->data;
+		if(ll_data->port == data->port && ll_data->addr.s_addr == data->addr.s_addr)
+			return 1;
+		ll_head = ll_head -> next;
+	} while(ll_head != NULL);
+	return 0;
+}
+
+void ll_print(ll_node *ll_head) {
+	NodeData *ll_data;	
+	if(ll_head == NULL)
+		return;
+	else {
+		ll_data = (NodeData *)ll_head->data;
+		printf("PORT: %d, ADDR: %s\n", ll_data->port, inet_ntoa(ll_data->addr));
+		ll_head = ll_head->next;
+	}
 }
 
 int main(int argc, char **argv)
@@ -74,6 +106,8 @@ int main(int argc, char **argv)
 	SockStruct *array;
 	struct in_addr subaddr;
 	fd_set rset;
+	ll_node *ll_head = NULL;
+	NodeData *ll_data;
 
 	fp = fopen("server.in", "r");
 	if(fp == NULL)
@@ -130,16 +164,30 @@ int main(int argc, char **argv)
 				n = recvfrom(array[i].sockfd, msg, MAXLINE, 0, (SA *)&ca, &clilen);
 				cport = ntohs(ca.sin_port);
 				caddr = ca.sin_addr;
-				if((childpid = fork()) == 0) {
-					for(j = 0; j<count; j++) {
-						if(j!=i)
-							close(array[i].sockfd);
+
+				ll_data = (NodeData *) malloc(sizeof(NodeData));
+				ll_data->port = cport;
+				ll_data->addr = caddr;
+
+				if (!ll_find(ll_head, ll_data)) {
+					if(ll_head == NULL)
+						ll_head = ll_initiate(ll_data);
+					else
+						ll_insert(ll_head, ll_data);
+						
+					ll_print(ll_head);
+
+					if((childpid = fork()) == 0) {
+						for(j = 0; j<count; j++) {
+							if(j!=i)
+								close(array[i].sockfd);
+						}
+						printf("IP Address: %s\n", inet_ntoa(*(array[i].addr)));
+						printf("Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
+						printf("Subnet Address: %s\n", inet_ntoa(*(array[i].subaddr)));
+						handleChild(&ca, cport, msg, n, &array[i]);
+						goto exitLabel;
 					}
-					printf("IP Address: %s\n", inet_ntoa(*(array[i].addr)));
-					printf("Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
-					printf("Subnet Address: %s\n", inet_ntoa(*(array[i].subaddr)));
-					handleChild(&ca, cport, msg, n, &array[i]);
-					goto exitLabel;
 				}
 			}
 		}
