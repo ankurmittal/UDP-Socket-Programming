@@ -24,4 +24,5 @@ float readfloat(FILE *f);
 
 static int datalenght = SEGLENGTH - sizeof(struct hdr);
 
+void *zalloc(size_t size);
 #endif	

@@ -25,8 +25,7 @@ rtt_init_plus(struct rtt_info *ptr)
 	struct timeval	tv;
 
 	Gettimeofday(&tv, NULL);
-	ptr->rtt_base = tv.tv_sec;		/* # sec since 1/1/1970 at start */
-
+	ptr->rtt_base = tv.tv_sec *1000 + tv.tv_usec/1000;
 	ptr->rtt_rtt    = 0;
 	ptr->rtt_srtt   = 0;
 	ptr->rtt_rttvar = 750;
@@ -50,7 +49,7 @@ rtt_ts_plus(struct rtt_info *ptr)
 	struct timeval	tv;
 
 	Gettimeofday(&tv, NULL);
-	ts = ((tv.tv_sec - ptr->rtt_base) * 1000) + (tv.tv_usec / 1000);
+	ts = ((tv.tv_sec) * 1000) + (tv.tv_usec / 1000) - ptr->rtt_base;
 	return(ts);
 }
 

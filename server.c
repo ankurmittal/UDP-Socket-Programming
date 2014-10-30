@@ -1,9 +1,11 @@
 #include "lib/unpifiplus.h"
 #include "lib/common.h"
+#include "lib/sendmessages.h"
 #include "lib/linkedlist.h"
 
 static const uint32_t localaddr = (127<<24) | 1;
 static int window;
+static FILE *filefd;
 
 typedef struct {
 	int sockfd;
@@ -16,6 +18,11 @@ typedef struct {
 	int port;
 	struct in_addr addr;
 }NodeData;
+
+int fillslidingwindow(int segments)
+{
+
+}
 
 void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 
@@ -42,30 +49,34 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(0);
-	servaddr.sin_addr = *server->addr;
+	servaddr.sin_addr = *(server->addr);
 
 	len = sizeof(servaddr);
 
-#ifndef UBUNTU
 	if(bind(sockfd, (SA *) &servaddr, len) < 0)
+	{
 		perror("Not able to make local connection");
-#endif
+		close(server->sockfd);
+		return;
+	}
 
 	connect(sockfd, (SA *)caddr, sizeof(*caddr));
-	Connect(server->sockfd, (SA *)caddr, sizeof(*caddr));
+	connect(server->sockfd, (SA *)caddr, sizeof(*caddr));
 
 	if (getpeername(sockfd, (SA *) &caddr, &len) < 0)
 	{
 		perror("Error getting socket info for server.");
 		close(sockfd);
-		exit(1);
+		close(server->sockfd);
+		return;
 	}
 	
 	if (getsockname(sockfd, (SA *) &servaddr, &len) < 0)
 	{
 		perror("Error getting socket info for client.");
 		close(sockfd);
-		exit(1);
+		close(server->sockfd);
+		return;
 	}
 	printf(" Client Address: %s\n", Sock_ntop((SA *) &caddr, len));
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
@@ -73,13 +84,14 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 	
 	init_sender(window, server->sockfd);
 
-	port = ntohs(servaddr.sin_port);
-	n = sprintf(buf, "%d", port);
+	n = sprintf(buf, "%d", servaddr.sin_port);
 	setsecondaryfd(sockfd);
-	writetowindow(buf, n);
-	dg_send();
+	writetowindow(buf, n + 1);
+	dg_send(fillslidingwindow);
+	//close(&filefd);
 	
 }
+
 
 int writetowindow(char * buf, int len)
 {
@@ -181,8 +193,7 @@ int main(int argc, char **argv)
 				n = recvfrom(array[i].sockfd, msg, MAXLINE, 0, (SA *)&ca, &clilen);
 				if(n < 0)
 				{
-					perror("Error reading from client");
-					exit(1);
+					break;
 				}
 
 				ll_data = (NodeData *) malloc(sizeof(NodeData));

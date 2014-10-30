@@ -1,9 +1,10 @@
 #include "unprttplus.h"
 #include "common.h"
+#include "sendmessages.h"
 #include <setjmp.h>
 #define RTT_DEBUG
 static struct rtt_info rttinfo;
-static int rttinit = 0, cwn = 1, sst = 0, sw = 0, rw = 1, packintransit = 0, lastseq = 0, secondaryfd = 0, fd = 0;
+static int rttinit = 0, cwin = 1, sst = 0, sw = 0, rw = 1, packintransit = 0, lastseq = 0, secondaryfd = 0, fd = 0;
 static uint32_t sequence = 0;
 static int head = -1, tail = -1, current = -1, csize = 0;
 static struct msghdr *msgsend =  NULL;
@@ -12,12 +13,13 @@ struct hdr *sendhdr, *recvhdr;
 static void sig_alrm(int signo);
 static sigjmp_buf jmpbuf;
 
+
+static void setitimerwrapper(struct itimerval *timer, long time);
 void init_sender(int window, int f) 
 {
 	int i;
 	sw = sst = window;
-	msgsend = (struct msghdr *) malloc(sw * sizeof(struct msghdr));
-	memset(msgsend, 0, sw * sizeof(struct msghdr));
+	msgsend = (struct msghdr *) zalloc(sw * sizeof(struct msghdr));
 	for(i =0; i < sw; i++)
 	{
 		msgsend[i].msg_iov = (struct iovec *) malloc(2 * sizeof(struct iovec));
@@ -42,7 +44,6 @@ int isswfull()
 {
 	return csize == sw;
 }
-static void setitimerwrapper(struct itimerval *timer, long time);
 void insertmsg(void *outbuff, int outlen)
 {
 	if(head == -1)
@@ -52,7 +53,7 @@ void insertmsg(void *outbuff, int outlen)
 	struct msghdr *mh = &msgsend[tail];
 	struct hdr * hd = (struct hdr *)(mh->msg_iov[0].iov_base);
 	hd->seq = sequence++;
-	mh->msg_iov[1].iov_base = malloc(outlen);
+	mh->msg_iov[1].iov_base = zalloc(outlen);
 	memcpy(mh->msg_iov[1].iov_base, outbuff, outlen);
 	mh->msg_iov[1].iov_len = outlen;
 	csize++;
@@ -84,7 +85,7 @@ static struct hdr *gethdr(struct msghdr *mh)
 	return (struct hdr *)mh->msg_iov[0].iov_base;
 }
 
-int dg_send()
+int dg_send(callback c)
 {
 	ssize_t window, awindow = 1;
 	uint32_t startseq, lastseq = -1;
@@ -110,7 +111,7 @@ int dg_send()
 	sigaction(SIGALRM, &sa, NULL);
 	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
 sendagain:
-	window = min(cwn - packintransit, sw);
+	window = min(cwin - packintransit, sw);
 	window = min(awindow, window);
 	window = min(window, csize);
 	for(i = 0; i < window; i++)
@@ -138,7 +139,7 @@ sendagain:
 	usesecondaryfd = 0;
 	
 	setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
-	//printf("\n Timer started at %u\n", rtt_ts_plus(&rttinfo));
+//	printf("\n Timer started at %u\n", rtt_ts_plus(&rttinfo));
 	if (sigsetjmp(jmpbuf, 1) != 0) {
 		if (rtt_timeout_plus(&rttinfo) < 0) {
 			err_msg("No response from client, giving up");
@@ -148,19 +149,28 @@ sendagain:
 		}
 		printf("Timeout, resending");
 		printf(", timeout at: %u\n", rtt_ts_plus(&rttinfo));
-		sst = min(cwn/2, sw);
+		sst = min(cwin/2, sw);
 		sst = max(sst, 2);
-		cwn = 1;
+		cwin = 1;
 		usesecondaryfd = 1;
 		current = (head + sw - 1)%sw;
 		packintransit = 0;
 		goto sendagain;
 	}
 	do {
-		n = recvmsg(fd, &msgrecv, 0);
+		if(secondaryfd) 
+		{
+			do {
+				n = recvmsg(secondaryfd, &msgrecv, 0);
+				printf("%d\n", n);
+			} while(n < 0);
+		}
+		else
+			n = recvmsg(fd, &msgrecv, 0);
 		if(n < 0)
 		{
 			perror("Error while reading from client");
+			close(fd);
 			return -1;
 		}
 		if(recvhdr.seq == lastseq + 1)
@@ -185,7 +195,7 @@ sendagain:
 	
 	rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo) - recvhdr.ts);
 	h = gethdr(&msgsend[head]);
-	cwn = cwn + recvhdr.seq - h->seq;
+	cwin = cwin + recvhdr.seq - h->seq;
 	awindow = h->window_size;
 	packintransit = packintransit - recvhdr.seq + h->seq;
 	for(i = 0; i < recvhdr.seq - h->seq; i++)
@@ -199,11 +209,11 @@ sendagain:
 
 static void setitimerwrapper(struct itimerval *timer, long time)
 {
-	timer->it_value.tv_sec = 0;
-	timer->it_value.tv_usec = time*1000;
+	timer->it_value.tv_sec = time / 1000;
+	timer->it_value.tv_usec = (time%1000) * 1000;
 	printf("Setting timer to:%ld\n",time);
-	timer->it_interval.tv_sec = 0;
-	timer->it_interval.tv_usec = time*1000;
+	timer->it_interval.tv_sec = time / 1000;
+	timer->it_interval.tv_usec = (time%1000) * 1000;
 	setitimer (ITIMER_REAL, timer, NULL);
 }
 

@@ -9,7 +9,7 @@ struct rtt_info {
   long		rtt_rttvar;	/* smoothed mean deviation, in milli seconds */
   long		rtt_rto;	/* current RTO to use, in seconds */
   int		rtt_nrexmt;	/* # times retransmitted: 0, 1, 2, ... */
-  uint32_t	rtt_base;	/* # sec since 1/1/1970 at start */
+  long		rtt_base;	/* # microsec since 1/1/1970 at start */
 };
 
 #define	RTT_RXTMIN     1000	/* min retransmit timeout value, in seconds */

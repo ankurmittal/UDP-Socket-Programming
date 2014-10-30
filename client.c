@@ -42,17 +42,18 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 		}
 
 	}
-	if(!issamehost && !islocal)
-	{
-		sa = (struct sockaddr_in *) ifihead->ifi_addr;
-		cliaddr->sin_addr.s_addr = sa->sin_addr.s_addr;
-	}
-	if(issamehost)
+	if(issamehost) {
 		printf(" Server is on same host, ");
+		servaddr->sin_addr.s_addr = cliaddr->sin_addr.s_addr = ntohl(localaddr);
+	}
 	else if(islocal)
 		printf(" Server is local, ");
 	else 
+	{
 		printf(" Server is not local, ");
+		sa = (struct sockaddr_in *) ifihead->ifi_addr;
+		cliaddr->sin_addr.s_addr = sa->sin_addr.s_addr;
+	}
 	printf("IPserver: %s, ", inet_ntoa(servaddr->sin_addr));
 	printf("IPclient: %s\n", inet_ntoa(cliaddr->sin_addr));
 	free_ifi_info_plus(ifihead);
@@ -60,7 +61,7 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 
 int main(int argc, char **argv)
 {
-	int sockfd, sport, ret, ssize, rseed, mean, servfd;
+	int sockfd, sport, ret, ssize, rseed, mean, servfd, reuse = 1;
 	float prob;
 	char serveripaddr[16], *temp, filename[PATH_MAX];
 	struct sockaddr_in servaddr, cliaddr, taddr;
@@ -111,13 +112,12 @@ int main(int argc, char **argv)
 	cliaddr.sin_port = htons(0);
 	
 	sockfd = Socket (AF_INET, SOCK_DGRAM, 0);
+	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
-#ifndef UBUNTU
 	len = sizeof(cliaddr);
 	if(bind(sockfd, (SA *) &cliaddr, len) < 0) {
 		perror("Not able to make local connection");
 	}
-#endif
 	len = sizeof(servaddr);
 	Connect(sockfd, (SA *) &servaddr, len);
 	if (getpeername(sockfd, (SA *) &servaddr, &len) < 0)
@@ -143,12 +143,17 @@ int main(int argc, char **argv)
 	len = recvfrom(sockfd, buf, 512, 0, NULL, NULL);
 
 	puts(buf + 12);
+	bzero(&taddr, sizeof(taddr));
 	taddr.sin_family = AF_UNSPEC;
 
-	servaddr.sin_port   = strtol(buf, NULL, 10);
+	servaddr.sin_port   = strtol(buf + 12, NULL, 10);
 
-	connect(sockfd, (SA *) &taddr, len);
+	printf("%u\n", servaddr.sin_port);
+	len = sizeof(servaddr);
+//	connect(sockfd, (SA *) &taddr, len);
+	perror("Error");
 	connect(sockfd, (SA *) &servaddr, len);
+	perror("Error");
 	if (getpeername(sockfd, (SA *) &servaddr, &len) < 0)
 	{
 		perror("Error getting socket info for server.");
@@ -156,5 +161,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
+	len = recvfrom(sockfd, buf, 512, 0, NULL, NULL);
+	puts(buf + 12);
 }
 
