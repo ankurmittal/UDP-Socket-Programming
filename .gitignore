@@ -3,3 +3,5 @@ client
 *.a
 server
 prifinfo_plus
+*.swp
+*.swo
