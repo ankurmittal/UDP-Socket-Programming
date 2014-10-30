@@ -1,3 +1,5 @@
 *.o
 client
+*.a
+server
 prifinfo_plus
