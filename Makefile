@@ -28,7 +28,7 @@ client.o: client.c
 server: server.o lib/mylib.a lib/common.h
 	${CC} ${FLAGS} -o server server.o lib/mylib.a ${LIBS}
 server.o: server.c 
-	${CC} ${CFLAGS} -c server.c
+	${CC} ${CFLAGS} ${UBUNTUF} -c server.c
 
 clean:
 	rm client server *.o
