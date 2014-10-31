@@ -23,7 +23,7 @@ int readint(FILE *f);
 
 float readfloat(FILE *f); 
 
-static int datalenght = SEGLENGTH - sizeof(struct hdr);
+static int datalength = SEGLENGTH - sizeof(struct hdr);
 
 void *zalloc(size_t size);
 void setitimerwrapper(struct itimerval *timer, long time);
