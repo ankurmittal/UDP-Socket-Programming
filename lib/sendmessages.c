@@ -121,8 +121,7 @@ int dg_send(callback c)
 	msgrecv.msg_iov = iovrecv;
 	msgrecv.msg_iovlen = 1;
 	bzero(&recvhdr, sizeof(struct hdr));
-printf("%d, %d", iovrecv[0].iov_base, &recvhdr);
-	iovrecv[0].iov_base = &recvhdr;
+	iovrecv[0].iov_base = (char *)&recvhdr;
 	iovrecv[0].iov_len = sizeof(struct hdr);
 	sigaction(SIGALRM, &sa, NULL);
 	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
@@ -144,7 +143,7 @@ sendagain:
 		n = sendmsg(fd, m, 0);
 		if(usesecondaryfd && secondaryfd)
 			n = sendmsg(secondaryfd, m, 0);
-		if(n < 0)
+		if(n < 0 && !usesecondaryfd)
 		{
 			perror(" Error in sending data");
 			return -1;
@@ -181,6 +180,7 @@ sendagain:
 			do {
 				n = recvmsg(secondaryfd, &msgrecv, 0);
 				printf("%d\n", n);
+				perror("Error");
 			} while(n < 0);
 		}
 		else

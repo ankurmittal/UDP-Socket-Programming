@@ -142,13 +142,13 @@ static void declareMsgHdr(SA *destaddr, socklen_t destlen)
 	msgsend.msg_iov = iovsend;
 	msgsend.msg_iovlen = 1;
 
-	iovsend[0].iov_base = &sendhdr;
+	iovsend[0].iov_base = (char *)&sendhdr;
 	iovsend[0].iov_len = sizeof(struct hdr);
 
 	msgrecv.msg_iov = iovrecv;
 	msgrecv.msg_iovlen = 2;
 
-	iovrecv[0].iov_base = &recvhdr;
+	iovrecv[0].iov_base = (char *)&recvhdr;
 	iovrecv[0].iov_len = sizeof(struct hdr);
 	iovrecv[1].iov_base = inbuff;
 	iovrecv[1].iov_len = datalength;
@@ -336,7 +336,6 @@ int main(int argc, char **argv)
 		sliding_window[i].seq = -1;
 	}
 
-	printf("creating new thread\n");
 	
 	bzero(&cliaddr, sizeof(cliaddr));
 	cliaddr.sin_family = AF_INET;
@@ -376,6 +375,7 @@ int main(int argc, char **argv)
 
 	declareMsgHdr((SA *) &servaddr, sizeof(servaddr));
 	
+	printf("Creating new thread\n");
 	pthread_create(&consumer, NULL, consume, NULL);
 	
 	while(!finish || lastSeq <= headSeq) {
@@ -385,7 +385,7 @@ int main(int argc, char **argv)
 	printf("joining pthread..!!\n");
 
 	pthread_join(consumer, NULL);
-	//destroyLock();
+//	destroyLock();
 	
 	close(sockfd);
 }

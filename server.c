@@ -287,7 +287,7 @@ int main(int argc, char **argv)
 					if((childpid = fork()) == 0) {
 						for(j = 0; j<count; j++) {
 							if(j != i)
-								close(array[i].sockfd);
+								close(array[j].sockfd);
 						}
 						printf("IP Address: %s\n", inet_ntoa(*(array[i].addr)));
 						printf("Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
