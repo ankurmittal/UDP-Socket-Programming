@@ -7,8 +7,8 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
-#include<sys/time.h>
-
+#include <sys/time.h>
+#include <assert.h>
 #define SEGLENGTH 512
 
 struct hdr {

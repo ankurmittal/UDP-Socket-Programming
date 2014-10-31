@@ -49,6 +49,7 @@ float readfloat(FILE *f)
 void *zalloc(size_t size)
 {
 	void *p = malloc(size);
+	assert(p!=NULL);
 	memset(p, 0, size);
 	return p;
 }
