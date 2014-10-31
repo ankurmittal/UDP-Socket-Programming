@@ -51,6 +51,7 @@ int fillslidingwindow(int segments)
 			readcount = read(fileno(filefd), filebuf, bufsize);
 			if(readcount < bufsize)
 				hasmoredata = 0;
+			i--;
 		}
 		else
 			return 0;
@@ -118,7 +119,8 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
 	filefd = fopen(msg, "r");	
-	bufsize = datalength * window * 2;
+	bufsize = min(datalength * window * 2, sysconf(_SC_PAGESIZE));
+	bufsize = (bufsize/datalength)*datalength;
 	filebuf = zalloc(bufsize);
 	init_sender(window, server->sockfd);
 
