@@ -23,6 +23,7 @@ static FILE *filefd;
 static uint32_t bufsize;
 static char *filebuf = NULL;
 static long offset = 0;
+static int portclosed = 0;
 
 static void closepeerconnection(int sockfd)
 {
@@ -39,10 +40,9 @@ int fillslidingwindow(int segments)
 	static long offset = 0;
 	static int hasmoredata = 1;
 	static int readcount = 0;
-	static int firsttime = 1;
-	if(firsttime)
+	if(!portclosed)
 	{
-		firsttime = 0;
+		portclosed = 1;
 		setsecondaryfd(0);
 		closepeerconnection(currentserver->sockfd);
 		close(currentserver->sockfd);
@@ -138,6 +138,12 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 	setsecondaryfd(primaryfd);
 	writetowindow(buf, n + 1);
 	dg_send(fillslidingwindow);
+
+	if(!portclosed)
+	{
+		closepeerconnection(server->sockfd);
+		close(server->sockfd);
+	}
 
 	//close(&filefd);
 
