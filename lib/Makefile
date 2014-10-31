@@ -15,7 +15,7 @@ SRC=$(wildcard *.c)
 OBJS=$(SRC:.c=.o)
 
 
-FLAGS =  -g -O2
+FLAGS =  -g -O2 -Wall
 CFLAGS = ${FLAGS} -I${slib}/lib
 
 all: ${OBJS} mylib.a prifinfo_plus

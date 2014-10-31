@@ -288,8 +288,6 @@ int main(int argc, char **argv)
 	uint32_t serverip;
 	char buf[SEGLENGTH];
 	struct iovec iovsend[2];
-	struct hdr sendhdr;
-	struct msghdr msgsend;
 	int firstMessage = 1, locked = 0;
 	pthread_t consumer;
 

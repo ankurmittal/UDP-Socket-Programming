@@ -9,7 +9,6 @@ static uint64_t sequence = 0;
 static int head = -1, tail = -1, current = -1, csize = 0;
 static struct msghdr *msgsend =  NULL;
 static struct msghdr msgrecv; /* assumed init to 0 */
-struct hdr *sendhdr, *recvhdr;
 static void sig_alrm(int signo);
 static sigjmp_buf jmpbuf;
 
@@ -22,7 +21,7 @@ void init_sender(int window, int f)
 	for(i =0; i < sw; i++)
 	{
 		msgsend[i].msg_iov = (struct iovec *) malloc(2 * sizeof(struct iovec));
-		msgsend[i].msg_iov[0].iov_base = (struct hdr *) malloc(sizeof(struct hdr));
+		msgsend[i].msg_iov[0].iov_base = zalloc(sizeof(struct hdr));
 		msgsend[i].msg_iov[0].iov_len = sizeof(struct hdr);
 		msgsend[i].msg_iovlen = 2;
 	}
@@ -104,7 +103,7 @@ int dg_send(callback c)
 	int usesecondaryfd = 0, dupcount, i, n;
 	struct iovec iovrecv[1];
 	struct msghdr *m;
-	struct hdr *h, recvhdr;
+	struct hdr recvhdr, *h;
 	struct sigaction sa;
 	struct itimerval timer;
 	int hasmorepackets = 1;
@@ -122,6 +121,7 @@ int dg_send(callback c)
 	msgrecv.msg_iov = iovrecv;
 	msgrecv.msg_iovlen = 1;
 	bzero(&recvhdr, sizeof(struct hdr));
+printf("%d, %d", iovrecv[0].iov_base, &recvhdr);
 	iovrecv[0].iov_base = &recvhdr;
 	iovrecv[0].iov_len = sizeof(struct hdr);
 	sigaction(SIGALRM, &sa, NULL);
