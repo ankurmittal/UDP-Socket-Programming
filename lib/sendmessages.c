@@ -213,7 +213,7 @@ sendagain:
 	rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo) - recvhdr.ts);
 	h = gethdr(&msgsend[head]);
 	cwin = cwin + recvhdr.seq - h->seq;
-	printf("Recieved ack:%u\n", h->seq); 
+	printf("Recieved ack:%u\n", recvhdr.seq); 
 	awindow = h->window_size;
 	packintransit = packintransit - recvhdr.seq + h->seq;
 	for(i = 0; i < recvhdr.seq - h->seq; i++)
