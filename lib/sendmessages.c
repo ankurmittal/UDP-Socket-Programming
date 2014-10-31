@@ -128,12 +128,11 @@ int dg_send(callback c)
 sendagain:
 	window = min(cwin - packintransit, sw);
 	window = min(awindow, window);
-	window = min(window, csize);
-	printf("Sending segment");
+	window = min(window, csize - packintransit);
 	for(i = 0; i < window; i++)
 	{
-		if(tail == -1)
-			break;
+		if(!i)
+			printf("Sending segment");
 		current = (current + 1)%sw;
 		m = &msgsend[current];
 		h = gethdr(m);
