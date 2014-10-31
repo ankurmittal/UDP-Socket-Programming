@@ -58,7 +58,7 @@ void setitimerwrapper(struct itimerval *timer, long time)
 {
 	timer->it_value.tv_sec = time / 1000;
 	timer->it_value.tv_usec = (time%1000) * 1000;
-	printf("Setting timer to:%ld\n",time);
+//	printf("Setting timer to:%ld\n",time);
 	timer->it_interval.tv_sec = time / 1000;
 	timer->it_interval.tv_usec = (time%1000) * 1000;
 	setitimer (ITIMER_REAL, timer, NULL);

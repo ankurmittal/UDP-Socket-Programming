@@ -3,24 +3,59 @@
 #include "lib/sendmessages.h"
 #include "lib/linkedlist.h"
 
-static const uint32_t localaddr = (127<<24) | 1;
-static int window;
-static FILE *filefd;
 
 typedef struct {
 	int sockfd;
 	struct in_addr *addr;
 	struct in_addr *ntmaddr;
 	struct in_addr *subaddr;
-}SockStruct;
+} SockStruct;
 
 typedef struct {
 	int port;
 	struct in_addr addr;
-}NodeData;
+} NodeData;
 
+static SockStruct *currentserver;
+static const uint32_t localaddr = (127<<24) | 1;
+static int window, primaryfd;
+static FILE *filefd;
+static uint32_t bufsize;
+static char *filebuf = NULL;
+static long offset = 0;
+
+//Returns 0 when no more data
 int fillslidingwindow(int segments)
 {
+	static long offset = 0;
+	static int hasmoredata = 1;
+	static int readcount = 0;
+	static int firsttime = 1;
+	if(firsttime)
+	{
+		firsttime = 0;
+		setsecondaryfd(0);
+		close(currentserver->sockfd);
+		setprimaryfd(primaryfd);
+	}
+	int i;
+	for(i = 0; i < segments; i++)
+	{
+		if(offset < readcount) {
+			writetowindow(filebuf + offset, min(datalength, readcount - offset));
+			offset += datalength;
+		} 
+		else if(hasmoredata)
+		{
+			offset = 0;
+			readcount = read(fileno(filefd), filebuf, bufsize);
+			if(readcount < bufsize)
+				hasmoredata = 0;
+		}
+		else
+			return 0;
+	}
+	return 1;
 
 }
 
@@ -28,9 +63,10 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 
 	struct sockaddr_in servaddr;
 	socklen_t len;
-	int port, sockfd, reuse = 1, err, n;
+	int port, reuse = 1, err, n;
 	char buf[6];
 	uint32_t clientip, serverip, servernetmask, serversubnet;
+	currentserver = server;
 	len = sizeof(*caddr);
 	printf(" Filename recieved from client: %s\n", msg);
 	printf(" Client Address: %s\n", Sock_ntop((SA *) caddr, len));
@@ -45,7 +81,7 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 		// DONTROUTE
 	}
 
-	sockfd = Socket(AF_INET, SOCK_DGRAM, 0);
+	primaryfd = Socket(AF_INET, SOCK_DGRAM, 0);
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(0);
@@ -53,42 +89,47 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 
 	len = sizeof(servaddr);
 
-	if(bind(sockfd, (SA *) &servaddr, len) < 0)
+	if(bind(primaryfd, (SA *) &servaddr, len) < 0)
 	{
 		perror("Not able to make local connection");
 		close(server->sockfd);
 		return;
 	}
 
-	connect(sockfd, (SA *)caddr, sizeof(*caddr));
+	connect(primaryfd, (SA *)caddr, sizeof(*caddr));
 	connect(server->sockfd, (SA *)caddr, sizeof(*caddr));
 
-	if (getpeername(sockfd, (SA *) &caddr, &len) < 0)
+	if (getpeername(primaryfd, (SA *) &caddr, &len) < 0)
 	{
 		perror("Error getting socket info for server.");
-		close(sockfd);
+		close(primaryfd);
 		close(server->sockfd);
 		return;
 	}
 	
-	if (getsockname(sockfd, (SA *) &servaddr, &len) < 0)
+	if (getsockname(primaryfd, (SA *) &servaddr, &len) < 0)
 	{
 		perror("Error getting socket info for client.");
-		close(sockfd);
+		close(primaryfd);
 		close(server->sockfd);
 		return;
 	}
 	printf(" Client Address: %s\n", Sock_ntop((SA *) &caddr, len));
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
-	
+	filefd = fopen(msg, "r");	
+	bufsize = datalength * window * 2;
+	filebuf = zalloc(bufsize);
 	init_sender(window, server->sockfd);
 
 	n = sprintf(buf, "%d", servaddr.sin_port);
-	setsecondaryfd(sockfd);
+	setsecondaryfd(primaryfd);
 	writetowindow(buf, n + 1);
 	dg_send(fillslidingwindow);
+
 	//close(&filefd);
+
+	close(primaryfd);
 	
 }
 

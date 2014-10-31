@@ -72,12 +72,25 @@ static void deletefromsw()
 	return;
 }
 
-
 static uint32_t getseq(struct msghdr *mh)
 {
 	struct hdr * hd = (struct hdr *)mh->msg_iov[0].iov_base;
 	return hd->seq;
 }
+
+static void printwindowcontent(int printnewline)
+{
+	int i;
+	printf("{");
+	for(i = 0; i < csize; i++)
+	{
+		printf("%d, ", getseq(&msgsend[(head + i)%sw]));
+	}
+	printf("}");
+	if(printnewline)
+		printf("\n");
+}
+
 
 static struct hdr *gethdr(struct msghdr *mh)
 {
@@ -94,8 +107,11 @@ int dg_send(callback c)
 	struct hdr *h, recvhdr;
 	struct sigaction sa;
 	struct itimerval timer;
+	int hasmorepackets = 1;
 	memset (&sa, 0, sizeof (sa));
 	sa.sa_handler = &sig_alrm;
+	printf("cwin = %d, sst= %d, window content=", cwin, sst);
+	printwindowcontent(1);
 	if (rttinit == 0) {
 		rtt_init_plus(&rttinfo); /* first time we're called */
 		rttinit = 1;
@@ -113,16 +129,17 @@ sendagain:
 	window = min(cwin - packintransit, sw);
 	window = min(awindow, window);
 	window = min(window, csize);
+	printf("Sending segment");
 	for(i = 0; i < window; i++)
 	{
 		if(tail == -1)
 			break;
 		current = (current + 1)%sw;
 		m = &msgsend[current];
-		printf("%p\n",m);
 		h = gethdr(m);
 		if(i == 0)
 			startseq = h->seq;
+		printf (" %u,", h->seq);
 		h->ts = rtt_ts_plus(&rttinfo);
 		n = sendmsg(fd, m, 0);
 		if(usesecondaryfd && secondaryfd)
@@ -133,8 +150,10 @@ sendagain:
 			return;
 		}
 		packintransit++;
-		printf(" data sent %d\n", n);
+		if(n < 512)
+			printf(" data sent %d\n", n);
 	}
+	printf("\n");
 	usesecondaryfd = 0;
 	
 	setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
@@ -191,18 +210,21 @@ sendagain:
 	} while (recvhdr.seq < startseq);
 
 	setitimerwrapper(&timer, 0);
-	
 	rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo) - recvhdr.ts);
 	h = gethdr(&msgsend[head]);
 	cwin = cwin + recvhdr.seq - h->seq;
+	printf("Recieved ack:%u\n", h->seq); 
 	awindow = h->window_size;
 	packintransit = packintransit - recvhdr.seq + h->seq;
 	for(i = 0; i < recvhdr.seq - h->seq; i++)
 	{
 		deletefromsw();
 	}
-	if(csize == 0)
-		return;
+	if(hasmorepackets == 0 && csize == 0)
+		return 0;
+	hasmorepackets = c(sw - csize); 
+	printf("cwin = %d, sst= %d, window content=", cwin, sst);
+	printwindowcontent(1);
 	goto sendagain;
 }
 

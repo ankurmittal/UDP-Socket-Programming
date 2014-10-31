@@ -7,7 +7,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
-#include<sys/time.h>>
+#include<sys/time.h>
 
 #define SEGLENGTH 512
 
@@ -23,7 +23,7 @@ int readint(FILE *f);
 
 float readfloat(FILE *f); 
 
-static int datalength = SEGLENGTH - sizeof(struct hdr);
+const static int datalength = SEGLENGTH - sizeof(struct hdr);
 
 void *zalloc(size_t size);
 void setitimerwrapper(struct itimerval *timer, long time);
