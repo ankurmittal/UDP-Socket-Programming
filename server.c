@@ -173,6 +173,23 @@ int ll_find(ll_node *ll_head, NodeData *data) {
 	return 0;
 }
 
+void handle_sigchld(int sig)
+{
+	while (waitpid((pid_t)(-1), 0, WNOHANG) > 0) {}
+}
+
+void registersigchild()
+{
+	struct sigaction sa;
+	sa.sa_handler = &handle_sigchld;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+	if (sigaction(SIGCHLD, &sa, 0) == -1) {
+		perror("Error handling sigchild");
+		exit(1);
+	}
+}
+
 void ll_print(ll_node *ll_head) {
 	NodeData *ll_data;	
 	if(ll_head == NULL)
@@ -200,6 +217,8 @@ int main(int argc, char **argv)
 	fd_set rset;
 	ll_node *ll_head = NULL;
 	NodeData *ll_data;
+	//registersigchild();
+	signal(SIGCHLD, SIG_IGN);
 
 	fp = fopen("server.in", "r");
 	if(fp == NULL)
@@ -262,7 +281,7 @@ int main(int argc, char **argv)
 						ll_head = ll_initiate(ll_data);
 					else
 						ll_insert(ll_head, ll_data);
-						
+
 					ll_print(ll_head);
 
 					if((childpid = fork()) == 0) {
