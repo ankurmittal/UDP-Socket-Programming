@@ -228,8 +228,6 @@ int main(int argc, char **argv)
 
 		for(i=0; i<count; i++) {
 			if(FD_ISSET(array[i].sockfd, &rset)) {
-				printf("\nIn select for sockfd: %d\n", array[i].sockfd);
-
 				clilen = sizeof(ca);
 				n = recvfrom(array[i].sockfd, msg, MAXLINE, 0, (SA *)&ca, &clilen);
 				if(n < 0)
