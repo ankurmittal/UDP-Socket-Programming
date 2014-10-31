@@ -68,7 +68,7 @@ void* ll_delete(ll_node *ll_pointer, ll_node *toDelete)
 
 	if(ll_pointer->next==NULL) {
 		printf("Element is not present in the list\n");
-		return;
+		return NULL;
 	}
 	temp = ll_pointer -> next;
 	ll_pointer->next = temp->next;

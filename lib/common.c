@@ -1,5 +1,5 @@
 #include "common.h"
-void *readstring(char *buf, int bufsize, FILE *f) 
+void readstring(char *buf, int bufsize, FILE *f) 
 {
 	char *c;
 	int s;

@@ -4,7 +4,7 @@
 #include <setjmp.h>
 #define RTT_DEBUG
 static struct rtt_info rttinfo;
-static int rttinit = 0, cwin = 1, sst = 0, sw = 0, rw = 1, packintransit = 0, secondaryfd = 0, fd = 0;
+static int rttinit = 0, cwin = 1, sst = 0, sw = 0, packintransit = 0, secondaryfd = 0, fd = 0;
 static uint64_t sequence = 0;
 static int head = -1, tail = -1, current = -1, csize = 0;
 static struct msghdr *msgsend =  NULL;
@@ -99,8 +99,8 @@ static struct hdr *gethdr(struct msghdr *mh)
 int dg_send(callback c)
 {
 	int window, awindow = 1;
-	uint64_t startseq, lastseq = -1;
-	int usesecondaryfd = 0, dupcount, i, n;
+	uint64_t startseq = 0, lastseq = -1;
+	int usesecondaryfd = 0, dupcount = 0, i, n;
 	struct iovec iovrecv[1];
 	struct msghdr *m;
 	struct hdr recvhdr, *h;
@@ -147,8 +147,8 @@ sendagain:
 		if(n < 0)
 		{
 			perror(" Error in sending data");
-			return;
-		}
+			return -1;
+ 		}
 		packintransit++;
 		if(n < 512)
 			printf(" data sent %d\n", n);
@@ -204,7 +204,7 @@ sendagain:
 			h = gethdr(m);
 			//h->ts = rtt_ts_plus(&rttinfo);
 			n = sendmsg(fd, m, 0);
-			dupcount == 0;
+			dupcount = 0;
 			setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
 		}
 	} while (recvhdr.seq < startseq);

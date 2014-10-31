@@ -17,7 +17,7 @@ struct hdr {
 	int window_size; /* window size*/
 };
 
-void *readstring(char *buf, int bufsize, FILE *f);
+void readstring(char *buf, int bufsize, FILE *f);
 
 int readint(FILE *f);
 
