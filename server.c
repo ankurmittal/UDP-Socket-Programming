@@ -24,6 +24,15 @@ static uint32_t bufsize;
 static char *filebuf = NULL;
 static long offset = 0;
 
+static void closepeerconnection(int sockfd)
+{
+	struct sockaddr_in addr;
+	socklen_t len;
+	len = sizeof(addr);
+	bzero(&addr, len);
+	addr.sin_family = AF_UNSPEC;
+	connect(sockfd, (SA *)&addr, len);
+}
 //Returns 0 when no more data
 int fillslidingwindow(int segments)
 {
@@ -35,6 +44,7 @@ int fillslidingwindow(int segments)
 	{
 		firsttime = 0;
 		setsecondaryfd(0);
+		closepeerconnection(currentserver->sockfd);
 		close(currentserver->sockfd);
 		setprimaryfd(primaryfd);
 	}
