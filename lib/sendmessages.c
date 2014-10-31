@@ -224,6 +224,7 @@ sendagain:
 	hasmorepackets = c(sw - csize); 
 	printf("cwin = %d, sst= %d, window content=", cwin, sst);
 	printwindowcontent(1);
+	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
 	goto sendagain;
 }
 
