@@ -9,12 +9,12 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <assert.h>
+#include <inttypes.h>
 #define SEGLENGTH 512
 
 struct hdr {
-	uint32_t seq; /* sequence # */
+	uint64_t seq; /* sequence # */
 	int window_size; /* window size*/
-	uint32_t ts; /* timestamp when sent */
 };
 
 void *readstring(char *buf, int bufsize, FILE *f);

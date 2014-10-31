@@ -13,7 +13,7 @@ static int rseed, mean;
 static struct SW {
 	char *pkt;
 	int length;
-	uint32_t seq;
+	uint64_t seq;
 	pthread_spinlock_t lock;
 }*sliding_window;
 
@@ -25,10 +25,10 @@ static struct sockaddr_in servaddr, taddr;
 static socklen_t len;
 
 static int ssize;
-static uint32_t lastSeq = 0;
-static uint32_t headSeq = 0;
+static uint64_t lastSeq = 0;
+static uint64_t headSeq = 0;
 static int connected = 0;
-static uint32_t firstSeq = 0;
+static uint64_t firstSeq = 0;
 static int finish = 0;
 static int lastAdvWindow = 0;
 static int sockfd;
@@ -38,7 +38,7 @@ static void printSlidingWindow() {
 	printf("SW: {");
 	for(i=0; i<ssize; i++) {
 		if(sliding_window[i].pkt != NULL)
-			printf("%u,", sliding_window[i].seq);
+			printf("%" PRIu64 ",", sliding_window[i].seq);
 		else
 			printf("-1,");
 	}
@@ -59,10 +59,10 @@ static int randomGen() {
 
 int sendAck() {
 	int n;
-	printf("Sending Ack %u\n", lastSeq);
 	sendhdr.seq = lastSeq;
-	sendhdr.window_size = ssize - headSeq + firstSeq - 1;
-	lastAdvWindow = ssize - headSeq + firstSeq - 1;
+	sendhdr.window_size = ssize - (int)(headSeq  - firstSeq) - 1;
+	lastAdvWindow = ssize - (int)(headSeq  - firstSeq) - 1;
+	printf("Sending Ack= %" PRIu64 ", window_size= %d\n", sendhdr.seq, sendhdr.window_size);
 	n = sendmsg(sockfd, &msgsend, 0);
 	if(n<0) {
 		perror("Error sending ack, exiting..!!");
@@ -98,7 +98,7 @@ static void* consume() {
 	int thisConsumed = 0;
 	char *data;
 	int length = 0;
-	uint32_t tempSeq;
+	uint64_t tempSeq;
 	srand(rseed);
 	printf("in consume\n");
 	while(!allConsumed) {
@@ -155,7 +155,7 @@ static void declareMsgHdr(SA *destaddr, socklen_t destlen)
 }
 
 static void insertToSw(ssize_t n) {
-	uint32_t newSeq = recvhdr.seq;
+	uint64_t newSeq = recvhdr.seq;
 	int length = n - sizeof(struct hdr);
 	char *temp;
 
@@ -189,15 +189,15 @@ static void insertToSw(ssize_t n) {
 ssize_t dg_recv_send(int sockfd)
 {
 	ssize_t n;
-	uint32_t newSeq;
+	uint64_t newSeq;
 	uint32_t ts;
 	do {
 		printSlidingWindow();
 		printf("Recieving..!!\n");
 		n = recvmsg(sockfd, &msgrecv, 0);
 		newSeq = recvhdr.seq;
-		ts = recvhdr.ts;
-		printf("Recieve Seq: %d\n", newSeq);
+		//ts = recvhdr.ts;
+		printf("Recieve Seq: %" PRIu64 "\n", newSeq);
 
 	} while(newSeq < lastSeq && sendAck());
 
@@ -218,9 +218,8 @@ ssize_t dg_recv_send(int sockfd)
 		connected = 1;
 	}
 
-	printf("head_seq: %d\n", headSeq);
-	sendhdr.ts = ts;
-	printf("Ack= %d, window_size= %d, sockfd= %d\n", sendhdr.seq, sendhdr.window_size, sockfd);
+	printf("tail_seq: %" PRIu64 "\n", headSeq);
+	//sendhdr.ts = ts;
 	sendAck();
 	return (n-sizeof(struct hdr));
 }

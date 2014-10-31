@@ -4,8 +4,8 @@
 #include <setjmp.h>
 #define RTT_DEBUG
 static struct rtt_info rttinfo;
-static int rttinit = 0, cwin = 1, sst = 0, sw = 0, rw = 1, packintransit = 0, lastseq = 0, secondaryfd = 0, fd = 0;
-static uint32_t sequence = 0;
+static int rttinit = 0, cwin = 1, sst = 0, sw = 0, rw = 1, packintransit = 0, secondaryfd = 0, fd = 0;
+static uint64_t sequence = 0;
 static int head = -1, tail = -1, current = -1, csize = 0;
 static struct msghdr *msgsend =  NULL;
 static struct msghdr msgrecv; /* assumed init to 0 */
@@ -72,7 +72,7 @@ static void deletefromsw()
 	return;
 }
 
-static uint32_t getseq(struct msghdr *mh)
+static uint64_t getseq(struct msghdr *mh)
 {
 	struct hdr * hd = (struct hdr *)mh->msg_iov[0].iov_base;
 	return hd->seq;
@@ -84,7 +84,7 @@ static void printwindowcontent(int printnewline)
 	printf("{");
 	for(i = 0; i < csize; i++)
 	{
-		printf("%d, ", getseq(&msgsend[(head + i)%sw]));
+		printf("%" PRIu64 ", ", getseq(&msgsend[(head + i)%sw]));
 	}
 	printf("}");
 	if(printnewline)
@@ -99,8 +99,8 @@ static struct hdr *gethdr(struct msghdr *mh)
 
 int dg_send(callback c)
 {
-	ssize_t window, awindow = 1;
-	uint32_t startseq, lastseq = -1;
+	int window, awindow = 1;
+	uint64_t startseq, lastseq = -1;
 	int usesecondaryfd = 0, dupcount, i, n;
 	struct iovec iovrecv[1];
 	struct msghdr *m;
@@ -121,6 +121,7 @@ int dg_send(callback c)
 	msgrecv.msg_namelen = 0;
 	msgrecv.msg_iov = iovrecv;
 	msgrecv.msg_iovlen = 1;
+	bzero(&recvhdr, sizeof(struct hdr));
 	iovrecv[0].iov_base = &recvhdr;
 	iovrecv[0].iov_len = sizeof(struct hdr);
 	sigaction(SIGALRM, &sa, NULL);
@@ -138,8 +139,8 @@ sendagain:
 		h = gethdr(m);
 		if(i == 0)
 			startseq = h->seq;
-		printf (" %u,", h->seq);
-		h->ts = rtt_ts_plus(&rttinfo);
+		printf (" %" PRIu64 ", %s", h->seq, PRIu64);
+		//h->ts = rtt_ts_plus(&rttinfo);
 		n = sendmsg(fd, m, 0);
 		if(usesecondaryfd && secondaryfd)
 			n = sendmsg(secondaryfd, m, 0);
@@ -201,7 +202,7 @@ sendagain:
 			setitimerwrapper(&timer, 0);
 			m = &msgsend[head];
 			h = gethdr(m);
-			h->ts = rtt_ts_plus(&rttinfo);
+			//h->ts = rtt_ts_plus(&rttinfo);
 			n = sendmsg(fd, m, 0);
 			dupcount == 0;
 			setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
@@ -209,12 +210,12 @@ sendagain:
 	} while (recvhdr.seq < startseq);
 
 	setitimerwrapper(&timer, 0);
-	rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo) - recvhdr.ts);
+	//rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo));
 	h = gethdr(&msgsend[head]);
-	cwin = cwin + recvhdr.seq - h->seq;
-	printf("Recieved ack:%u\n", recvhdr.seq); 
-	awindow = h->window_size;
-	packintransit = packintransit - recvhdr.seq + h->seq;
+	cwin = cwin + (int)(recvhdr.seq - h->seq);
+	printf("Recieved ack:%" PRIu64 "\n", recvhdr.seq); 
+	awindow = recvhdr.window_size;
+	packintransit = packintransit - (int)(recvhdr.seq - h->seq);
 	for(i = 0; i < recvhdr.seq - h->seq; i++)
 	{
 		deletefromsw();
@@ -222,7 +223,7 @@ sendagain:
 	if(hasmorepackets == 0 && csize == 0)
 		return 0;
 	hasmorepackets = c(sw - csize); 
-	printf("cwin = %d, sst= %d, window content=", cwin, sst);
+	printf("cwin = %d, sst= %d, adv window=%d, window content=", cwin, sst, awindow);
 	printwindowcontent(1);
 	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
 	goto sendagain;
