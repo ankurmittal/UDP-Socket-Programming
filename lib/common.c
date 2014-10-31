@@ -64,3 +64,14 @@ void setitimerwrapper(struct itimerval *timer, long time)
 	timer->it_interval.tv_usec = (time%1000) * 1000;
 	setitimer (ITIMER_REAL, timer, NULL);
 }
+
+void printdebuginfo(const char *format, ...)
+{
+#ifdef NDEBUFINFO
+	return;
+#endif
+	va_list args;
+	va_start(args, format);
+	vprintf(format, args);
+	va_end(args);
+}

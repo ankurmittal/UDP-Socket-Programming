@@ -27,7 +27,7 @@ mylib.a: get_ifi_info_plus.o rtt_plus.o linkedlist.o sendmessages.o common.o
 	ar r mylib.a $^
 
 %.o: %.c
-	${CC} -c $^ $(CFLAGS)
+	${CC} ${DEBUGFLAG} -c $^ $(CFLAGS)
 
 clean:
 	rm prifinfo_plus *.o mylib.a
