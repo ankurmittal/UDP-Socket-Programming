@@ -94,14 +94,13 @@ static void destroyLock() {
 }
 
 static void* consume() {
-	int allConsumed = 0;
 	int thisConsumed = 0;
 	char *data;
 	int length = 0;
 	uint64_t tempSeq;
 	srand(rseed);
 	printf("in consume\n");
-	while(!allConsumed) {
+	while(1) {
 		while(!thisConsumed) {
 			tempSeq = firstSeq % ssize;
 			//printf("taking lock, tempSeq: %u\n", tempSeq);	
@@ -123,16 +122,17 @@ static void* consume() {
 				//write(0, data, length);
 				free(data);
 			}
-			if(thisConsumed && finish)
-				allConsumed = 1;
+			printSlidingWindow();
+			if(firstSeq == lastSeq && finish)
+				break;
 
 			if(lastAdvWindow == 0)
 				sendAck();
-			printSlidingWindow();
 		}
 		usleep(randomGen());
 		thisConsumed = 0;
 	}
+	return NULL;
 }
 
 static void declareMsgHdr(SA *destaddr, socklen_t destlen)
@@ -159,7 +159,7 @@ static void insertToSw(ssize_t n) {
 	int length = n - sizeof(struct hdr);
 	char *temp;
 
-	if(newSeq-lastSeq >= ssize)
+	if(headSeq + lastAdvWindow < newSeq)
 		return;
  	
 	if(sliding_window[newSeq%ssize].pkt != NULL)
@@ -176,8 +176,13 @@ static void insertToSw(ssize_t n) {
 	pthread_spin_unlock(&(sliding_window[newSeq % ssize].lock));
 	//printf("X unlocking, newseq: %u\n", newSeq);
 
-	if(newSeq-lastSeq == 0)
+	if(newSeq == lastSeq)
+	{
 		lastSeq++;
+		while(sliding_window[(lastSeq)%ssize].pkt != NULL 
+				&& sliding_window[(lastSeq)%ssize].seq == lastSeq)
+			lastSeq++;
+	}
 
 	if(newSeq > headSeq)
 		headSeq = newSeq;	
@@ -218,7 +223,7 @@ ssize_t dg_recv_send(int sockfd)
 		connected = 1;
 	}
 
-	printf("tail_seq: %" PRIu64 "\n", headSeq);
+	printf("tail_seq: %" PRIu64 ", firstseq: %" PRIu64 "\n", headSeq, firstSeq);
 	//sendhdr.ts = ts;
 	sendAck();
 	return (n-sizeof(struct hdr));
@@ -313,7 +318,7 @@ int main(int argc, char **argv)
 	sport = readint(infile);
 	servaddr.sin_port   = htons(sport);
 	readstring(filename, PATH_MAX, infile);
-	ssize = readint(infile);
+	ssize = lastAdvWindow = readint(infile);
 	rseed = readint(infile);
 	prob = readfloat(infile);
 	mean = readint(infile);

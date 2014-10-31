@@ -99,7 +99,7 @@ static struct hdr *gethdr(struct msghdr *mh)
 int dg_send(callback c)
 {
 	int window, awindow = 1;
-	uint64_t startseq = 0, lastseq = -1;
+	uint64_t lastseq = -1;
 	int usesecondaryfd = 0, dupcount = 0, i, n;
 	struct iovec iovrecv[1];
 	struct msghdr *m;
@@ -129,6 +129,7 @@ sendagain:
 	window = min(cwin - packintransit, sw);
 	window = min(awindow, window);
 	window = min(window, csize - packintransit);
+	printf("send window %d, pt: %d, ", window, packintransit);
 	for(i = 0; i < window; i++)
 	{
 		if(!i)
@@ -136,11 +137,10 @@ sendagain:
 		current = (current + 1)%sw;
 		m = &msgsend[current];
 		h = gethdr(m);
-		if(i == 0)
-			startseq = h->seq;
-		printf (" %" PRIu64 ", %s", h->seq, PRIu64);
+		printf (" %" PRIu64 ", ", h->seq);
 		//h->ts = rtt_ts_plus(&rttinfo);
 		n = sendmsg(fd, m, 0);
+		packintransit++;
 		if(usesecondaryfd && secondaryfd)
 			n = sendmsg(secondaryfd, m, 0);
 		if(n < 0 && !usesecondaryfd)
@@ -156,7 +156,6 @@ sendagain:
 	usesecondaryfd = 0;
 	
 	setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
-//	printf("\n Timer started at %u\n", rtt_ts_plus(&rttinfo));
 	if (sigsetjmp(jmpbuf, 1) != 0) {
 		if (rtt_timeout_plus(&rttinfo) < 0) {
 			err_msg("No response from client, giving up");
@@ -164,65 +163,83 @@ sendagain:
 			errno = ETIMEDOUT;
 			return (-1);
 		}
+		current = (head + sw - 1)%sw;
+		packintransit = 0;
+		if(awindow == 0)
+		{
+			printf("Adv Window was 0, probing client\n");
+			awindow = 1;
+			goto sendagain;
+		}
 		printf("Timeout, resending");
 		printf(", timeout at: %u\n", rtt_ts_plus(&rttinfo));
 		sst = min(cwin/2, sw);
 		sst = max(sst, 2);
 		cwin = 1;
 		usesecondaryfd = 1;
-		current = (head + sw - 1)%sw;
-		packintransit = 0;
 		goto sendagain;
 	}
-	do {
-		if(secondaryfd) 
-		{
-			do {
-				n = recvmsg(secondaryfd, &msgrecv, 0);
-				printf("%d\n", n);
-				perror("Error");
-			} while(n < 0);
-		}
-		else
-			n = recvmsg(fd, &msgrecv, 0);
-		if(n < 0)
-		{
-			perror("Error while reading from client");
-			close(fd);
-			return -1;
-		}
-		if(recvhdr.seq == lastseq + 1)
-			dupcount++;
-		else {
-			lastseq = recvhdr.seq - 1;
-			dupcount = 0;
-		}
-		if(dupcount == 3)
-		{
-			setitimerwrapper(&timer, 0);
-			m = &msgsend[head];
-			h = gethdr(m);
-			//h->ts = rtt_ts_plus(&rttinfo);
-			n = sendmsg(fd, m, 0);
-			dupcount = 0;
-			setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
-		}
-	} while (recvhdr.seq < startseq);
+recieveagain:
+	h = gethdr(&msgsend[head]);
+	if(secondaryfd) 
+	{
+		do {
+			n = recvmsg(secondaryfd, &msgrecv, 0);
+			printf("%d\n", n);
+			if(n < 0)
+				perror("Error while reading from client");
+		} while(n < 0);
+	}
+	else
+		n = recvmsg(fd, &msgrecv, 0);
+	if(n < 0 && errno !=EINTR)
+	{
+		perror("Fatal Error while reading from client");
+		close(fd);
+		return -1;
+	} 
+	else if(n < 0 && errno == EINTR)
+	{
+		goto recieveagain;
+	}
+	if(recvhdr.seq == lastseq + 1)
+	{
+		dupcount++;
+		printf("Recieved dup ack:%" PRIu64 ", dup count:%d\n", recvhdr.seq, dupcount); 
+	}
+	else {
+		packintransit = max(0, packintransit - (int)(recvhdr.seq - h->seq));
+		printf("Recieved ack:%" PRIu64 "\n", recvhdr.seq); 
+		lastseq = recvhdr.seq - 1;
+		dupcount = 0;
+	}
+	if(dupcount > 2)
+	{
+		setitimerwrapper(&timer, 0);
+		m = &msgsend[head];
+		h = gethdr(m);
+		//h->ts = rtt_ts_plus(&rttinfo);
+		printf("Sending segment %" PRIu64 " again\n", recvhdr.seq);
+		n = sendmsg(fd, m, 0);
+		dupcount = 0;
+		setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
+		goto recieveagain;
+	}
 
 	setitimerwrapper(&timer, 0);
 	//rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo));
-	h = gethdr(&msgsend[head]);
 	cwin = cwin + (int)(recvhdr.seq - h->seq);
-	printf("Recieved ack:%" PRIu64 "\n", recvhdr.seq); 
 	awindow = recvhdr.window_size;
-	packintransit = packintransit - (int)(recvhdr.seq - h->seq);
 	for(i = 0; i < recvhdr.seq - h->seq; i++)
 	{
 		deletefromsw();
 	}
+	if(current >= (head + csize)%sw)
+		current = head;
 	if(hasmorepackets == 0 && csize == 0)
 		return 0;
-	hasmorepackets = c(sw - csize); 
+	if(hasmorepackets && (sw - csize))
+		hasmorepackets = c(sw - csize); 
 	printf("cwin = %d, sst= %d, adv window=%d, window content=", cwin, sst, awindow);
 	printwindowcontent(1);
 	rtt_newpack_plus(&rttinfo); /* initialize for this packet */

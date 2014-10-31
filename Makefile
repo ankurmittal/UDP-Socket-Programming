@@ -12,7 +12,7 @@ endif
 CC = gcc
 
 
-FLAGS =  -g -O2
+FLAGS =  -g -O2 -Wall
 CFLAGS = ${FLAGS} -I${slib}/lib
 
 all: libmake client server

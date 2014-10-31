@@ -22,8 +22,17 @@ static int window, primaryfd;
 static FILE *filefd;
 static uint32_t bufsize;
 static char *filebuf = NULL;
-static long offset = 0;
 static int portclosed = 0;
+
+int writetowindow(char * buf, int len)
+{
+	if(!isswfull())
+		insertmsg(buf, len);
+	else
+		return -1;
+	return 0;
+
+}
 
 static void closepeerconnection(int sockfd)
 {
@@ -37,7 +46,7 @@ static void closepeerconnection(int sockfd)
 //Returns 0 when no more data
 int fillslidingwindow(int segments)
 {
-	static long offset = 0;
+	static uint32_t offset = 0;
 	static int hasmoredata = 1;
 	static int readcount = 0;
 	if(!portclosed)
@@ -87,7 +96,7 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 	servernetmask = htonl(server->ntmaddr->s_addr);
 	serversubnet = htonl(server->subaddr->s_addr);
 
-	if(serverip == localaddr || serversubnet == clientip & servernetmask) {
+	if(serverip == localaddr || serversubnet == (clientip & servernetmask)) {
 		printf(" Client is local.\n");
 		// DONTROUTE
 	}
@@ -152,13 +161,6 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 }
 
 
-int writetowindow(char * buf, int len)
-{
-	if(!isswfull())
-		insertmsg(buf, len);
-	else
-		return -1;
-}
 
 int ll_find(ll_node *ll_head, NodeData *data) {
 	NodeData *ll_data;
