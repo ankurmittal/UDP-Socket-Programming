@@ -58,7 +58,7 @@ rtt_newpack_plus(struct rtt_info *ptr)
 }
 
 
-rtt_start_plus(struct rtt_info *ptr)
+int rtt_start_plus(struct rtt_info *ptr)
 {
 	return ptr->rtt_rto / 1000;
 }
