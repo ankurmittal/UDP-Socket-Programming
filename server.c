@@ -21,7 +21,7 @@ static const uint32_t localaddr = (127<<24) | 1;
 static int window, primaryfd;
 static FILE *filefd;
 static uint32_t bufsize;
-static char *filebuf = NULL;
+static char *filebuf = NULL, *file_error = NULL;
 static int portclosed = 0;
 
 int writetowindow(char * buf, int len)
@@ -56,6 +56,11 @@ int fillslidingwindow(int segments)
 		closepeerconnection(currentserver->sockfd);
 		close(currentserver->sockfd);
 		setprimaryfd(primaryfd);
+		if(filefd == NULL)
+		{
+			writetowindow(file_error, strlen(file_error));
+		}
+		return 0;
 	}
 	int i;
 	for(i = 0; i < segments; i++)
@@ -83,7 +88,7 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 
 	struct sockaddr_in servaddr;
 	socklen_t len;
-	int port, reuse = 1, err, n;
+	int reuse = 1, n;
 	char buf[6];
 	uint32_t clientip, serverip, servernetmask, serversubnet;
 	currentserver = server;
@@ -137,7 +142,11 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 	printf(" Client Address: %s\n", Sock_ntop((SA *) &caddr, len));
 	printf(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
-	filefd = fopen(msg, "r");	
+	filefd = fopen(msg, "r");
+	if(filefd == NULL)
+	{
+		file_error = strerror(errno);
+	}
 	bufsize = min(datalength * window * 2, sysconf(_SC_PAGESIZE));
 	bufsize = (bufsize/datalength)*datalength;
 	filebuf = zalloc(bufsize);
@@ -206,13 +215,12 @@ void ll_print(ll_node *ll_head) {
 int main(int argc, char **argv)
 {
 	int i=0, sockfd, maxfd=0, port=0, count=0;
-	pid_t childpid, pid;
-	const int on = 1;
+	pid_t childpid;
 	struct ifi_info *ifi, *ifihead;
 	struct sockaddr_in *sa, ca;
-	socklen_t len, clilen;
+	socklen_t clilen;
 	char msg[MAXLINE];
-	int n, cport, j;
+	int n, j;
 	FILE *fp;
 	SockStruct *array;
 	struct in_addr subaddr;
