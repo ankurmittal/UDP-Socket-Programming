@@ -9,18 +9,18 @@ struct rtt_info {
   long		rtt_rttvar;	/* smoothed mean deviation, in milli seconds */
   long		rtt_rto;	/* current RTO to use, in seconds */
   int		rtt_nrexmt;	/* # times retransmitted: 0, 1, 2, ... */
-  long		rtt_base;	/* # microsec since 1/1/1970 at start */
+  uint64_t		rtt_base;	/* # microsec since 1/1/1970 at start */
 };
 
-#define	RTT_RXTMIN     1000	/* min retransmit timeout value, in seconds */
-#define	RTT_RXTMAX     3000	/* max retransmit timeout value, in seconds */
+#define	RTT_RXTMIN     1000000	/* min retransmit timeout value, in seconds */
+#define	RTT_RXTMAX     3000000	/* max retransmit timeout value, in seconds */
 #define	RTT_MAXNREXMT 	12	/* max # times to retransmit */
 
 				/* function prototypes */
 void	 rtt_debug(struct rtt_info *);
 void	 rtt_init_plus(struct rtt_info *);
 void	 rtt_newpack_plus(struct rtt_info *);
-long	 rtt_start_plus(struct rtt_info *);
+int	     rtt_start_plus(struct rtt_info *);
 void	 rtt_stop_plus(struct rtt_info *, uint32_t);
 int		 rtt_timeout_plus(struct rtt_info *);
 uint32_t rtt_ts_plus(struct rtt_info *);

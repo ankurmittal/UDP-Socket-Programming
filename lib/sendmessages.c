@@ -129,10 +129,11 @@ sendagain:
 	window = min(awindow - packintransit, window);
 	window = min(window, csize - packintransit);
 	rto = rtt_start_plus(&rttinfo);
-	printf("\ncwin = %d, sst= %d, adv window=%d, packet in transit=%d, rto=%ld, window content=", cwin, sst, awindow, packintransit, rto);
-	//printf("send window %d, pt: %d, ", window, packintransit);
-	printf("current:%d, head:%d, tail:%d", current, head, tail);
+	printf("\ncwin = %d, sst= %d, adv window=%d, packet in transit=%d, window content=", cwin, sst, awindow, packintransit);
 	printwindowcontent(1);
+	rtt_debug(&rttinfo);
+	//printf("send window %d, pt: %d, ", window, packintransit);
+	//printf("current:%d, head:%d, tail:%d", current, head, tail);
 	stimer = rtt_ts_plus(&rttinfo);
 	for(i = 0; i < window; i++)
 	{

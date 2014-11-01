@@ -25,12 +25,11 @@ rtt_init_plus(struct rtt_info *ptr)
 	struct timeval	tv;
 
 	Gettimeofday(&tv, NULL);
-	ptr->rtt_base = tv.tv_sec *1000 + tv.tv_usec/1000;
+	ptr->rtt_base   = (uint64_t)tv.tv_sec *1000000.0 + tv.tv_usec;
 	ptr->rtt_rtt    = 0;
 	ptr->rtt_srtt   = 0;
-	ptr->rtt_rttvar = 50;
+	ptr->rtt_rttvar = 300000;
 	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
-	printf("rto = %ld\n", ptr->rtt_rto);
 		/* first RTO at (srtt + (4 * rttvar)) = 3 seconds */
 }
 /* end rtt1 */
@@ -42,14 +41,13 @@ rtt_init_plus(struct rtt_info *ptr)
  */
 
 /* include rtt_ts */
-uint32_t
-rtt_ts_plus(struct rtt_info *ptr)
+uint32_t rtt_ts_plus(struct rtt_info *ptr)
 {
 	uint32_t		ts;
 	struct timeval	tv;
 
-	Gettimeofday(&tv, NULL);
-	ts = ((tv.tv_sec) * 1000) + (tv.tv_usec / 1000) - ptr->rtt_base;
+	gettimeofday(&tv, NULL);
+	ts = ((tv.tv_sec) * 1000000) + (tv.tv_usec) - ptr->rtt_base;
 	return(ts);
 }
 
@@ -59,10 +57,10 @@ rtt_newpack_plus(struct rtt_info *ptr)
 	ptr->rtt_nrexmt = 0;
 }
 
-long
+
 rtt_start_plus(struct rtt_info *ptr)
 {
-	return ptr->rtt_rto;
+	return ptr->rtt_rto / 1000;
 }
 /* end rtt_ts */
 
@@ -81,7 +79,7 @@ rtt_stop_plus(struct rtt_info *ptr, uint32_t ms)
 {
 	long delta;
 
-	ptr->rtt_rtt = ms;		/* measured RTT in seconds */
+	ptr->rtt_rtt = ms;		/* measured RTT in micro-seconds */
 
 	/*
 	 * Update our estimators of RTT and mean deviation of RTT.
@@ -112,7 +110,7 @@ rtt_timeout_plus(struct rtt_info *ptr)
 {
 	ptr->rtt_rto *= 2;		/* next RTO */
 
-	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
+	ptr->rtt_rto = rtt_minmax(ptr->rtt_rto);
 	
 	if (++ptr->rtt_nrexmt > RTT_MAXNREXMT)
 		return(-1);			/* time to give up for this packet */
@@ -130,7 +128,7 @@ rtt_debug(struct rtt_info *ptr)
 	if (rtt_d_flag == 0)
 		return;
 
-	fprintf(stderr, "rtt = %ld , srtt = %ld, rttvar = %ld, rto = %ld\n",
+	fprintf(stdout, "rtt = %ld , srtt = %ld, rttvar = %ld, rto = %ldms\n",
 			ptr->rtt_rtt, ptr->rtt_srtt, ptr->rtt_rttvar, ptr->rtt_rto);
-	fflush(stderr);
+	fflush(stdout);
 }
