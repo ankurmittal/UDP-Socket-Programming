@@ -67,7 +67,7 @@ void setitimerwrapper(struct itimerval *timer, long time)
 
 void printdebuginfo(const char *format, ...)
 {
-#ifdef NDEBUFINFO
+#ifdef NDEBUGINFO
 	return;
 #endif
 	va_list args;
