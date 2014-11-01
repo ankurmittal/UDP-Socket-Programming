@@ -98,7 +98,7 @@ static struct hdr *gethdr(struct msghdr *mh)
 
 int dg_send(callback c)
 {
-	int window, awindow = 1;
+	int window, awindow = sw, cincr = 0;
 	uint64_t lastseq = -1;
 	int usesecondaryfd = 0, dupcount = 0, i, n;
 	struct iovec iovrecv[1];
@@ -107,10 +107,9 @@ int dg_send(callback c)
 	struct sigaction sa;
 	struct itimerval timer;
 	int hasmorepackets = 1;
+	long stimer, rto;
 	memset (&sa, 0, sizeof (sa));
 	sa.sa_handler = &sig_alrm;
-	printf("cwin = %d, sst= %d, window content=", cwin, sst);
-	printwindowcontent(1);
 	if (rttinit == 0) {
 		rtt_init_plus(&rttinfo); /* first time we're called */
 		rttinit = 1;
@@ -127,13 +126,20 @@ int dg_send(callback c)
 	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
 sendagain:
 	window = min(cwin - packintransit, sw);
-	window = min(awindow, window);
+	window = min(awindow - packintransit, window);
 	window = min(window, csize - packintransit);
-	printf("send window %d, pt: %d, ", window, packintransit);
+	rto = rtt_start_plus(&rttinfo);
+	printf("\ncwin = %d, sst= %d, adv window=%d, packet in transit=%d, rto=%ld, window content=", cwin, sst, awindow, packintransit, rto);
+	//printf("send window %d, pt: %d, ", window, packintransit);
+	printf("current:%d, head:%d, tail:%d", current, head, tail);
+	printwindowcontent(1);
+	stimer = rtt_ts_plus(&rttinfo);
 	for(i = 0; i < window; i++)
 	{
+		if(current == tail && csize < sw)
+			break;
 		if(!i)
-			printf("Sending segment");
+			printf("Sending segment(s)");
 		current = (current + 1)%sw;
 		m = &msgsend[current];
 		h = gethdr(m);
@@ -148,14 +154,14 @@ sendagain:
 			perror(" Error in sending data");
 			return -1;
  		}
-		packintransit++;
 		if(n < 512)
 			printf(" data sent %d\n", n);
 	}
-	printf("\n");
+	if(window)
+		printf("\n");
 	usesecondaryfd = 0;
 	
-	setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
+	setitimerwrapper(&timer, rto);
 	if (sigsetjmp(jmpbuf, 1) != 0) {
 		if (rtt_timeout_plus(&rttinfo) < 0) {
 			err_msg("No response from client, giving up");
@@ -176,6 +182,7 @@ sendagain:
 		sst = min(cwin/2, sw);
 		sst = max(sst, 2);
 		cwin = 1;
+		cincr = 0;
 		usesecondaryfd = 1;
 		goto sendagain;
 	}
@@ -202,6 +209,7 @@ recieveagain:
 	{
 		goto recieveagain;
 	}
+	rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo) - stimer);
 	if(recvhdr.seq == lastseq + 1)
 	{
 		dupcount++;
@@ -227,21 +235,38 @@ recieveagain:
 	}
 
 	setitimerwrapper(&timer, 0);
-	//rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo));
-	cwin = cwin + (int)(recvhdr.seq - h->seq);
+	if(cwin >= sst)
+	{
+		cincr += (int)(recvhdr.seq - h->seq);
+		if(cincr >= cwin) {
+			cwin++;
+			cincr = cincr - cwin + 1;
+		}
+	}
+	else
+	{
+		cincr = (int)(recvhdr.seq - h->seq);
+		if(cwin + cincr > sst)
+			cwin = sst + 1;
+		else
+			cwin = cwin + cincr;
+		cincr = 0;
+	}
 	awindow = recvhdr.window_size;
 	for(i = 0; i < recvhdr.seq - h->seq; i++)
 	{
 		deletefromsw();
 	}
-	if(current >= (head + csize)%sw)
-		current = head;
 	if(hasmorepackets == 0 && csize == 0)
 		return 0;
 	if(hasmorepackets && (sw - csize))
 		hasmorepackets = c(sw - csize); 
-	printf("cwin = %d, sst= %d, adv window=%d, window content=", cwin, sst, awindow);
-	printwindowcontent(1);
+	if(csize && (((current + 1)%sw < head && (current + 1)%sw + sw >= head + csize) 
+			|| (current + 1)%sw >= head + csize))
+	{
+		printf("resetting current:%d, %d, %d\n", current, head, csize);
+		current = (head + sw - 1)%sw;
+ 	}
 	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
 	goto sendagain;
 }

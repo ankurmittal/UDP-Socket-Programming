@@ -28,7 +28,7 @@ rtt_init_plus(struct rtt_info *ptr)
 	ptr->rtt_base = tv.tv_sec *1000 + tv.tv_usec/1000;
 	ptr->rtt_rtt    = 0;
 	ptr->rtt_srtt   = 0;
-	ptr->rtt_rttvar = 750;
+	ptr->rtt_rttvar = 50;
 	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 	printf("rto = %ld\n", ptr->rtt_rto);
 		/* first RTO at (srtt + (4 * rttvar)) = 3 seconds */
