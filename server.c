@@ -59,8 +59,8 @@ int fillslidingwindow(int segments)
 		if(filefd == NULL)
 		{
 			writetowindow(file_error, strlen(file_error));
+			return 0;
 		}
-		return 0;
 	}
 	int i;
 	for(i = 0; i < segments; i++)
@@ -101,12 +101,14 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 	servernetmask = htonl(server->ntmaddr->s_addr);
 	serversubnet = htonl(server->subaddr->s_addr);
 
+	primaryfd = Socket(AF_INET, SOCK_DGRAM, 0);
+	
 	if(serverip == localaddr || serversubnet == (clientip & servernetmask)) {
 		printf(" Client is local.\n");
-		// DONTROUTE
+	 	setsockopt(primaryfd, SOL_SOCKET, SO_DONTROUTE, &reuse, sizeof(reuse));
+	 	setsockopt(server->sockfd, SOL_SOCKET, SO_DONTROUTE, &reuse, sizeof(reuse));
 	}
 
-	primaryfd = Socket(AF_INET, SOCK_DGRAM, 0);
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(0);

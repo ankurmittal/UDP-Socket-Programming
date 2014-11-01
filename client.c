@@ -7,6 +7,9 @@
 #include <math.h>
 #include <stdio.h>
 
+#define TIMEOUTLIMIT 10
+
+static int dontroute = 1;
 static const uint32_t localaddr = (127 << 24) + 1;
 static int issamehost = 0, islocal = 0;
 static int rseed, mean;
@@ -32,15 +35,39 @@ static uint64_t firstSeq = 0;
 static int finish = 0;
 static int lastAdvWindow = 0;
 static int sockfd;
+static float prob;
+static sigjmp_buf jmpbuf;
+static struct sigaction sa;
+static struct itimerval timer;
+static int timeoutcounter = 0;
+static pthread_t consumer;
+static void sig_alrm(int signo) {
+	siglongjmp(jmpbuf, 1);
+}
+
+static int shouldDrop(int type, uint64_t seqNo) {
+	double randomNo;
+	randomNo = drand48();
+	printdebuginfo("randomNo: %lf, prob: %f\n", randomNo, prob);
+	if(randomNo < prob) {
+		if(type)
+			printdebuginfo("Dropping Ack: %" PRIu64 "\n", seqNo);
+		else
+			printdebuginfo("Dropping Packet: %" PRIu64 "\n", seqNo);
+		return 1;
+	}
+	else
+		return 0;
+}
 
 static void printSlidingWindow2() {
 	int i=0;
 	printdebuginfo("SW2: {");
 	for(i = (firstSeq%ssize); i <= (headSeq%ssize); i++) {
 		if(sliding_window[i].pkt != NULL) {
-			 printdebuginfo("%" PRIu64 ",", sliding_window[i].seq);
+			printdebuginfo("%" PRIu64 ",", sliding_window[i].seq);
 		} else {
-			 printdebuginfo("-1,");
+			printdebuginfo("-1,");
 		}
 	}
 	printdebuginfo(" }\n");
@@ -57,24 +84,27 @@ static void printSlidingWindow() {
 		}
 	}
 	printdebuginfo(" }\n");
-	printSlidingWindow2();
+	//printSlidingWindow2();
 }
 
 static int randomGen() {
 	double number = 0;
 	double result = 0;
-	while(number == 0 || number == 1) {
-		number = (double)rand()/(double)RAND_MAX;
-	}
+
+	number = drand48();
 	result = log((double)number) * mean * -1;
 	result *= 1000;
-	printdebuginfo("Sleeping for %d MicroSec.\n", (int)result);
+	//printdebuginfo("Sleeping for %d MicroSec.\n", (int)result);
 	return (int)result;
 }
 
 int sendAck() {
 	int n;
 	sendhdr.seq = lastSeq;
+
+	if(shouldDrop(1, lastSeq)) {
+		return 1;
+	}
 	sendhdr.window_size = ssize - (int)(headSeq  - firstSeq) - 1;
 	lastAdvWindow = ssize - (int)(headSeq  - firstSeq) - 1;
 	printdebuginfo("Sending Ack= %" PRIu64 ", window_size= %d\n", sendhdr.seq, sendhdr.window_size);
@@ -113,7 +143,7 @@ static void* consume() {
 	char *data;
 	int length = 0;
 	uint64_t tempSeq;
-	srand(rseed);
+
 	printdebuginfo("in consume\n");
 	while(1) {
 		while(!thisConsumed) {
@@ -134,6 +164,7 @@ static void* consume() {
 
 			if(data != NULL) {
 				if(firstSeq != 1) {
+					//printdebuginfo("\nprinting content\n");
 					write(STDOUT_FILENO, data, length);
 				}
 				free(data);
@@ -211,19 +242,24 @@ ssize_t dg_recv_send(int sockfd)
 {
 	ssize_t n;
 	uint64_t newSeq;
-	//uint32_t ts;
 	do {
 		printSlidingWindow();
 		printdebuginfo("Recieving..!!\n");
-		n = recvmsg(sockfd, &msgrecv, 0);
+		do {
+			n = recvmsg(sockfd, &msgrecv, 0);
+		} while(shouldDrop(0, recvhdr.seq));
+
 		newSeq = recvhdr.seq;
-		//ts = recvhdr.ts;
 		printdebuginfo("Recieve Seq: %" PRIu64 "\n", newSeq);
 
 	} while(newSeq < lastSeq && sendAck());
 
-	insertToSw(n);
+	if(newSeq)
+		insertToSw(n);
+
 	if(!connected) {
+		setitimerwrapper(&timer, 0);
+		timeoutcounter = 0;	
 
 		taddr.sin_family = AF_UNSPEC;
 		len = sizeof(servaddr);
@@ -237,11 +273,17 @@ ssize_t dg_recv_send(int sockfd)
 		}
 		printdebuginfo("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 		connected = 1;
+
+		lastSeq = 1;
+		firstSeq = 1;
+
+		printdebuginfo("Creating new thread\n");
+		pthread_create(&consumer, NULL, consume, NULL);
 	}
 
 	printdebuginfo("tail_seq: %" PRIu64 ", firstseq: %" PRIu64 "\n", headSeq, firstSeq);
-	//sendhdr.ts = ts;
 	sendAck();
+
 	return (n-sizeof(struct hdr));
 }
 
@@ -287,6 +329,7 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 	else if(islocal) {
 		printdebuginfo(" Server is local, ");
 	} else {
+		dontroute = 0;
 		printdebuginfo(" Server is not local, ");
 		sa = (struct sockaddr_in *) ifihead->ifi_addr;
 		cliaddr->sin_addr.s_addr = sa->sin_addr.s_addr;
@@ -299,13 +342,15 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 int main(int argc, char **argv)
 {
 	int sport, reuse = 1, i=0;
-	float prob;
 	char serveripaddr[16], filename[PATH_MAX];
 	struct sockaddr_in cliaddr;
 	FILE *infile;
 	char *ifile = "client.in";
 	uint32_t serverip;
-	pthread_t consumer;
+	time_t t1;
+	struct timeval selectTime;
+	fd_set allset;
+	(void) time(&t1);
 
 	infile = fopen(ifile, "r");
 	if(infile == NULL)
@@ -340,6 +385,8 @@ int main(int argc, char **argv)
 
 	sliding_window = (struct SW *)zalloc(ssize*sizeof(struct SW));
 
+	srand48((long) t1 + rseed);
+
 	printdebuginfo("initiating locks..!!\n");
 	if(initiateLock() != 0) {
 		//free all allocated memory and exit the program
@@ -361,8 +408,12 @@ int main(int argc, char **argv)
 	printdebuginfo("In Main Thread..!!\n");
 
 	sockfd = Socket (AF_INET, SOCK_DGRAM, 0);
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
+	if(dontroute)
+		setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR | SO_DONTROUTE, &reuse, sizeof(reuse));
+	else
+		setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+	
 	len = sizeof(cliaddr);
 	if(bind(sockfd, (SA *) &cliaddr, len) < 0) {
 		perror("Not able to make local connection");
@@ -387,15 +438,51 @@ int main(int argc, char **argv)
 	printdebuginfo("Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
 	printdebuginfo("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
-	write(sockfd, filename, strlen(filename));
+	//timeout and
+
+	//shouldDrop
+	memset (&sa, 0, sizeof (sa));
+	sa.sa_handler = &sig_alrm;
+	sigaction(SIGALRM, &sa, NULL);
+
+sendagain:
+	if(!shouldDrop(1, 0)) {
+		printdebuginfo("writing first packet now..\n");
+		write(sockfd, filename, strlen(filename));
+	}
+
+	printdebuginfo("setting timer to 3000\n");
+	setitimerwrapper(&timer, 3000);
+	if (sigsetjmp(jmpbuf, 1) != 0) {
+		printdebuginfo("timeout first pkt\n");
+		if(timeoutcounter < TIMEOUTLIMIT) {
+			timeoutcounter++;
+			goto sendagain;	
+		}
+		else {
+			printdebuginfo("Timeout Limit reached..!! Exiting now..!! \n");
+			exit(1);
+		}
+	}
 
 	declareMsgHdr((SA *) &servaddr, sizeof(servaddr));
 
-	printdebuginfo("Creating new thread\n");
-	pthread_create(&consumer, NULL, consume, NULL);
-
 	while(!finish || lastSeq <= headSeq) {
 		len = dg_recv_send(sockfd);
+	}
+
+	for(;;) {
+		selectTime.tv_sec = 6;
+		selectTime.tv_usec = 0;
+		FD_ZERO(&allset);
+		FD_SET(sockfd, &allset);
+		select(sockfd+1, &allset, NULL, NULL, &selectTime);
+		if(FD_ISSET(sockfd, &allset)) {
+			len = dg_recv_send(sockfd);
+		} else {
+			printdebuginfo("TIME_WAIT state, exiting\n");
+			break;
+		}
 	}
 
 	printdebuginfo("joining pthread..!!\n");
