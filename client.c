@@ -33,16 +33,31 @@ static int finish = 0;
 static int lastAdvWindow = 0;
 static int sockfd;
 
+static void printSlidingWindow2() {
+	int i=0;
+	printdebuginfo("SW2: {");
+	for(i = (firstSeq%ssize); i <= (headSeq%ssize); i++) {
+		if(sliding_window[i].pkt != NULL) {
+			 printdebuginfo("%" PRIu64 ",", sliding_window[i].seq);
+		} else {
+			 printdebuginfo("-1,");
+		}
+	}
+	printdebuginfo(" }\n");
+}
+
 static void printSlidingWindow() {
 	int i=0;
-	printf("SW: {");
+	printdebuginfo("SW: {");
 	for(i=0; i<ssize; i++) {
-		if(sliding_window[i].pkt != NULL)
-			printf("%" PRIu64 ",", sliding_window[i].seq);
-		else
-			printf("-1,");
+		if(sliding_window[i].pkt != NULL) {
+			printdebuginfo("%" PRIu64 ",", sliding_window[i].seq);
+		} else {
+			printdebuginfo("-1,");
+		}
 	}
-	printf(" }\n");
+	printdebuginfo(" }\n");
+	printSlidingWindow2();
 }
 
 static int randomGen() {
@@ -53,7 +68,7 @@ static int randomGen() {
 	}
 	result = log((double)number) * mean * -1;
 	result *= 1000;
-	printf("Sleeping for %d MicroSec.\n", (int)result);
+	printdebuginfo("Sleeping for %d MicroSec.\n", (int)result);
 	return (int)result;
 }
 
@@ -62,7 +77,7 @@ int sendAck() {
 	sendhdr.seq = lastSeq;
 	sendhdr.window_size = ssize - (int)(headSeq  - firstSeq) - 1;
 	lastAdvWindow = ssize - (int)(headSeq  - firstSeq) - 1;
-	printf("Sending Ack= %" PRIu64 ", window_size= %d\n", sendhdr.seq, sendhdr.window_size);
+	printdebuginfo("Sending Ack= %" PRIu64 ", window_size= %d\n", sendhdr.seq, sendhdr.window_size);
 	n = sendmsg(sockfd, &msgsend, 0);
 	if(n<0) {
 		perror("Error sending ack, exiting..!!");
@@ -75,7 +90,7 @@ static int initiateLock() {
 	int i = 0, locked = 0;	
 	for(i=0; i<ssize; i++) {
 		if (pthread_spin_init(&(sliding_window[i].lock), 0) != 0) {
-			printf("\n spinlock init failed\n");
+			printdebuginfo("\n spinlock init failed\n");
 			locked = i;
 			break;
 		}
@@ -99,11 +114,11 @@ static void* consume() {
 	int length = 0;
 	uint64_t tempSeq;
 	srand(rseed);
-	printf("in consume\n");
+	printdebuginfo("in consume\n");
 	while(1) {
 		while(!thisConsumed) {
 			tempSeq = firstSeq % ssize;
-			//printf("taking lock, tempSeq: %u\n", tempSeq);	
+			//printdebuginfo("taking lock, tempSeq: %u\n", tempSeq);	
 			pthread_spin_lock(&(sliding_window[tempSeq].lock));
 			data = NULL;
 			if (sliding_window[tempSeq].pkt != NULL) {
@@ -115,16 +130,17 @@ static void* consume() {
 				thisConsumed = 1;
 			}
 			pthread_spin_unlock(&(sliding_window[tempSeq].lock));
-			//printf("unlocking, tempSeq: %u\n", tempSeq);	
-			
+			//printdebuginfo("unlocking, tempSeq: %u\n", tempSeq);	
+
 			if(data != NULL) {
-				printf("printing content..!!\n");
-				//write(0, data, length);
+				if(firstSeq != 1) {
+					write(STDOUT_FILENO, data, length);
+				}
 				free(data);
 			}
 			printSlidingWindow();
 			if(firstSeq == lastSeq && finish)
-				break;
+				return NULL;
 
 			if(lastAdvWindow == 0)
 				sendAck();
@@ -161,20 +177,20 @@ static void insertToSw(ssize_t n) {
 
 	if(headSeq + lastAdvWindow < newSeq)
 		return;
- 	
+
 	if(sliding_window[newSeq%ssize].pkt != NULL)
 		return;
 
 	temp = (char *) zalloc (datalength);
 	memcpy(temp, inbuff, length);
 
-	//printf("X locking, newseq: %u\n", newSeq);
- 	pthread_spin_lock(&(sliding_window[newSeq % ssize].lock));
+	//printdebuginfo("X locking, newseq: %u\n", newSeq);
+	pthread_spin_lock(&(sliding_window[newSeq % ssize].lock));
 	sliding_window[newSeq%ssize].pkt = temp;
 	sliding_window[newSeq%ssize].length = length;
 	sliding_window[newSeq%ssize].seq = newSeq;
 	pthread_spin_unlock(&(sliding_window[newSeq % ssize].lock));
-	//printf("X unlocking, newseq: %u\n", newSeq);
+	//printdebuginfo("X unlocking, newseq: %u\n", newSeq);
 
 	if(newSeq == lastSeq)
 	{
@@ -195,14 +211,14 @@ ssize_t dg_recv_send(int sockfd)
 {
 	ssize_t n;
 	uint64_t newSeq;
-	uint32_t ts;
+	//uint32_t ts;
 	do {
 		printSlidingWindow();
-		printf("Recieving..!!\n");
+		printdebuginfo("Recieving..!!\n");
 		n = recvmsg(sockfd, &msgrecv, 0);
 		newSeq = recvhdr.seq;
 		//ts = recvhdr.ts;
-		printf("Recieve Seq: %" PRIu64 "\n", newSeq);
+		printdebuginfo("Recieve Seq: %" PRIu64 "\n", newSeq);
 
 	} while(newSeq < lastSeq && sendAck());
 
@@ -219,11 +235,11 @@ ssize_t dg_recv_send(int sockfd)
 			close(sockfd);
 			exit(1);
 		}
-		printf("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
+		printdebuginfo("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 		connected = 1;
 	}
 
-	printf("tail_seq: %" PRIu64 ", firstseq: %" PRIu64 "\n", headSeq, firstSeq);
+	printdebuginfo("tail_seq: %" PRIu64 ", firstseq: %" PRIu64 "\n", headSeq, firstSeq);
 	//sendhdr.ts = ts;
 	sendAck();
 	return (n-sizeof(struct hdr));
@@ -236,8 +252,8 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 	struct sockaddr_in *sa;
 	for (ifihead = ifi = Get_ifi_info_plus(AF_INET, 1);
 			ifi != NULL; ifi = ifi->ifi_next) {
-		printf(" IP addr: %s, ", Sock_ntop_host(ifi->ifi_addr, sizeof(*ifi->ifi_addr)));
-		printf("Network Mask: %s\n", Sock_ntop_host(ifi->ifi_ntmaddr, sizeof(*ifi->ifi_ntmaddr)));
+		printdebuginfo(" IP addr: %s, ", Sock_ntop_host(ifi->ifi_addr, sizeof(*ifi->ifi_addr)));
+		printdebuginfo("Network Mask: %s\n", Sock_ntop_host(ifi->ifi_ntmaddr, sizeof(*ifi->ifi_ntmaddr)));
 
 		if(!issamehost)
 		{
@@ -264,36 +280,31 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 		}
 	}
 	if(issamehost) {
-		printf(" Server is on same host, ");
+		printdebuginfo(" Server is on same host, ");
 		servaddr->sin_addr.s_addr = cliaddr->sin_addr.s_addr = ntohl(localaddr);
 	}
 
-	else if(islocal)
-		printf(" Server is local, ");
-	else 
-	{
-		printf(" Server is not local, ");
+	else if(islocal) {
+		printdebuginfo(" Server is local, ");
+	} else {
+		printdebuginfo(" Server is not local, ");
 		sa = (struct sockaddr_in *) ifihead->ifi_addr;
 		cliaddr->sin_addr.s_addr = sa->sin_addr.s_addr;
 	}
-	printf("IPserver: %s, ", inet_ntoa(servaddr->sin_addr));
-	printf("IPclient: %s\n", inet_ntoa(cliaddr->sin_addr));
+	printdebuginfo("IPserver: %s, ", inet_ntoa(servaddr->sin_addr));
+	printdebuginfo("IPclient: %s\n", inet_ntoa(cliaddr->sin_addr));
 	free_ifi_info_plus(ifihead);
 }
 
 int main(int argc, char **argv)
 {
-	int sport, ret, servfd, reuse = 1, i=0;
+	int sport, reuse = 1, i=0;
 	float prob;
-	char serveripaddr[16], *temp, filename[PATH_MAX];
+	char serveripaddr[16], filename[PATH_MAX];
 	struct sockaddr_in cliaddr;
 	FILE *infile;
 	char *ifile = "client.in";
-	struct sockaddr_storage ss;
 	uint32_t serverip;
-	char buf[SEGLENGTH];
-	struct iovec iovsend[2];
-	int firstMessage = 1, locked = 0;
 	pthread_t consumer;
 
 	infile = fopen(ifile, "r");
@@ -307,7 +318,7 @@ int main(int argc, char **argv)
 	servaddr.sin_family = AF_INET;
 	if (inet_pton(AF_INET, serveripaddr, &servaddr.sin_addr) <= 0) 
 	{
-		printf("inet_pton error for %s\n", serveripaddr);
+		printdebuginfo("inet_pton error for %s\n", serveripaddr);
 		fclose(infile);
 		exit(1);
 	}
@@ -325,29 +336,29 @@ int main(int argc, char **argv)
 
 	fclose(infile);
 
-	//printf("%s, %d, %s, %d, %d, %f, %d", serverip, sport, filename, ssize, rseed, prob, mean);
-	
+	//printdebuginfo("%s, %d, %s, %d, %d, %f, %d", serverip, sport, filename, ssize, rseed, prob, mean);
+
 	sliding_window = (struct SW *)zalloc(ssize*sizeof(struct SW));
 
-	printf("initiating locks..!!\n");
+	printdebuginfo("initiating locks..!!\n");
 	if(initiateLock() != 0) {
 		//free all allocated memory and exit the program
 	}
-	printf("locks initiated..!!\n");
-	
+	printdebuginfo("locks initiated..!!\n");
+
 	for(i=0; i<ssize; i++) {
 		sliding_window[i].pkt = NULL;
 		sliding_window[i].length = 0;
 		sliding_window[i].seq = -1;
 	}
 
-	
+
 	bzero(&cliaddr, sizeof(cliaddr));
 	cliaddr.sin_family = AF_INET;
 	resolveips(&servaddr, &cliaddr, serverip);
 	cliaddr.sin_port = htons(0);
 
-	printf("In Main Thread..!!\n");
+	printdebuginfo("In Main Thread..!!\n");
 
 	sockfd = Socket (AF_INET, SOCK_DGRAM, 0);
 	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
@@ -373,24 +384,25 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	printf("Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
-	printf("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
+	printdebuginfo("Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
+	printdebuginfo("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
 	write(sockfd, filename, strlen(filename));
 
 	declareMsgHdr((SA *) &servaddr, sizeof(servaddr));
-	
-	printf("Creating new thread\n");
+
+	printdebuginfo("Creating new thread\n");
 	pthread_create(&consumer, NULL, consume, NULL);
-	
+
 	while(!finish || lastSeq <= headSeq) {
 		len = dg_recv_send(sockfd);
 	}
-	
-	printf("joining pthread..!!\n");
+
+	printdebuginfo("joining pthread..!!\n");
 
 	pthread_join(consumer, NULL);
-//	destroyLock();
-	
+	destroyLock();
+
 	close(sockfd);
+	exit(0);
 }
