@@ -14,6 +14,8 @@ typedef struct {
 typedef struct {
 	int port;
 	struct in_addr addr;
+	int pfd;
+	int pid;
 } NodeData;
 
 static SockStruct *currentserver;
@@ -172,7 +174,6 @@ void handleChild(struct sockaddr_in *caddr, char *msg, SockStruct *server) {
 }
 
 
-
 int ll_find(ll_node *ll_head, NodeData *data) {
 	NodeData *ll_data;
 	if(ll_head == NULL)
@@ -186,22 +187,6 @@ int ll_find(ll_node *ll_head, NodeData *data) {
 	return 0;
 }
 
-void handle_sigchld(int sig)
-{
-	while (waitpid((pid_t)(-1), 0, WNOHANG) > 0) {}
-}
-
-void registersigchild()
-{
-	struct sigaction sa;
-	sa.sa_handler = &handle_sigchld;
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-	if (sigaction(SIGCHLD, &sa, 0) == -1) {
-		perror("Error handling sigchild");
-		exit(1);
-	}
-}
 
 void ll_print(ll_node *ll_head) {
 	NodeData *ll_data;	
@@ -229,8 +214,10 @@ int main(int argc, char **argv)
 	fd_set rset;
 	ll_node *ll_head = NULL;
 	NodeData *ll_data;
+
+	
 	//registersigchild();
-	signal(SIGCHLD, SIG_IGN);
+	//signal(SIGCHLD, SIG_IGN);
 
 	fp = fopen("server.in", "r");
 	if(fp == NULL)
@@ -268,14 +255,43 @@ int main(int argc, char **argv)
 	}
 
 	for( ; ; ) {
+		ll_node *ll_n = ll_head;
 		FD_ZERO(&rset);
+		while(ll_n != NULL)
+		{
+			ll_data = (NodeData *) ll_n->data;
+			FD_SET(ll_data->pfd, &rset);
+			maxfd = max(maxfd, ll_data->pfd);
+			ll_n = ll_n->next;
+		}
 		for(i=0; i<count; i++) {
 			FD_SET(array[i].sockfd, &rset);
 			maxfd = max(maxfd, array[i].sockfd);
 		}
 		Select(maxfd+1, &rset, NULL, NULL, NULL);
 
-		for(i=0; i<count; i++) {
+		for(i=0; i < count; i++) {
+			ll_n = ll_head;
+			ll_node *prev = NULL;
+			while(ll_n != NULL)
+			{
+				ll_data = (NodeData *) ll_n->data;
+				if(FD_ISSET(ll_data->pfd, &rset)) {
+					int pid = ll_data->pid, status = 0;
+					close(ll_data->pfd);
+					if(prev)
+						prev->next = ll_n->next;
+					else
+						ll_head = ll_n->next;
+					free(ll_data);
+					free(ll_n);
+					waitpid(pid, &status, 0);
+					break;
+				}
+				prev = ll_n;
+				ll_n = ll_n->next;
+			}
+			
 			if(FD_ISSET(array[i].sockfd, &rset)) {
 				clilen = sizeof(ca);
 				n = recvfrom(array[i].sockfd, msg, MAXLINE, 0, (SA *)&ca, &clilen);
@@ -289,14 +305,18 @@ int main(int argc, char **argv)
 				ll_data->addr = ca.sin_addr;
 
 				if (!ll_find(ll_head, ll_data)) {
+					int *pfd = malloc(2 * sizeof(int));
+					n = pipe(pfd);
 					if(ll_head == NULL)
 						ll_head = ll_initiate(ll_data);
 					else
 						ll_insert(ll_head, ll_data);
 
 					ll_print(ll_head);
+					ll_data->pfd = pfd[1];
 
 					if((childpid = fork()) == 0) {
+						close(pfd[1]);
 						for(j = 0; j<count; j++) {
 							if(j != i)
 								close(array[j].sockfd);
@@ -305,14 +325,27 @@ int main(int argc, char **argv)
 						printf("Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
 						printf("Subnet Address: %s\n", inet_ntoa(*(array[i].subaddr)));
 						handleChild(&ca, msg, &array[i]);
+						printf("Exiting child\n");
+						n = write(pfd[0], "a", 2);
+						close(pfd[0]);
+						free(pfd);
 						goto exitLabel;
+					} else
+					{
+						close(pfd[0]);
+						free(pfd);
+						ll_data->pid = childpid;
 					}
+				} 
+				else
+				{
+					free(ll_data);
 				}
 			}
 		}
 	}
-exitLabel:
 	printf("\nExiting..!!\n");
+exitLabel:
 	free_ifi_info_plus(ifihead);
 	free(array);
 	exit(0);
