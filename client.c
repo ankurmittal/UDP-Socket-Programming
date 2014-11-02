@@ -258,7 +258,7 @@ void dg_recv_send(int sockfd)
 		taddr.sin_family = AF_UNSPEC;
 		len = sizeof(servaddr);
 		servaddr.sin_port   = strtol(inbuff, NULL, 10);
-		Connect(sockfd, (SA *) &servaddr, len);
+		connect(sockfd, (SA *) &servaddr, len);
 
 		if (getpeername(sockfd, (SA *) &servaddr, &len) < 0) {
 			perror("Error getting socket info for server.");
@@ -323,7 +323,11 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 	} else {
 		dontroute = 0;
 		printdebuginfo("Server is not local.\n");
-		sa = (struct sockaddr_in *) ifihead->ifi_addr;
+		ifi = ifihead;
+		sa = (struct sockaddr_in *) ifi->ifi_addr;
+		if(ifihead->ifi_next && localaddr == htonl(sa->sin_addr.s_addr))
+			ifi = ifi->ifi_next;
+		sa = (struct sockaddr_in *) ifi->ifi_addr;
 		cliaddr->sin_addr.s_addr = sa->sin_addr.s_addr;
 	}
 	printdebuginfo(" IPserver: %s, ", inet_ntoa(servaddr->sin_addr));

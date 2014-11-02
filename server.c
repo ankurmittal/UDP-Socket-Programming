@@ -111,8 +111,8 @@ void handleChild(struct sockaddr_in *caddr, struct connectioninfo *info,
 		printf(" Client is local.\n");
 	 	setsockopt(primaryfd, SOL_SOCKET, SO_DONTROUTE, &reuse, sizeof(reuse));
 	 	setsockopt(server->sockfd, SOL_SOCKET, SO_DONTROUTE, &reuse, sizeof(reuse));
-	}
-
+	} else
+		printf(" Client is not local\n");	
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(0);
