@@ -8,7 +8,7 @@ typedef struct {
 	int sockfd;
 	struct in_addr *addr;
 	struct in_addr *ntmaddr;
-	struct in_addr *subaddr;
+	struct in_addr subaddr;
 } SockStruct;
 
 typedef struct {
@@ -103,7 +103,7 @@ void handleChild(struct sockaddr_in *caddr, struct connectioninfo *info,
 	clientip = htonl(caddr->sin_addr.s_addr);
 	serverip = htonl(server->addr->s_addr);
 	servernetmask = htonl(server->ntmaddr->s_addr);
-	serversubnet = htonl(server->subaddr->s_addr);
+	serversubnet = htonl(server->subaddr.s_addr);
 
 	primaryfd = Socket(AF_INET, SOCK_DGRAM, 0);
 	
@@ -232,12 +232,12 @@ int main(int argc, char **argv)
 		array[i].addr = &(sa->sin_addr);
 		array[i].ntmaddr = &((struct sockaddr_in *) ifi->ifi_ntmaddr)->sin_addr;
 		subaddr.s_addr = (*array[i].addr).s_addr & (*array[i].ntmaddr).s_addr;
-		array[i].subaddr = &subaddr;
+		array[i].subaddr = subaddr;
 		array[i].sockfd = sockfd;
 
 		printf(" IP Address: %s\n", inet_ntoa(*(array[i].addr)));
 		printf(" Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
-		printf(" Subnet Address: %s\n", inet_ntoa(*(array[i].subaddr)));
+		printf(" Subnet Address: %s\n", inet_ntoa(array[i].subaddr));
 
 	}
 
