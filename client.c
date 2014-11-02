@@ -9,10 +9,6 @@
 
 #define TIMEOUTLIMIT 10
 
-static int dontroute = 1;
-static const uint32_t localaddr = (127 << 24) + 1;
-static int issamehost = 0, islocal = 0;
-static int rseed, mean;
 static struct SW {
 	char *pkt;
 	int length;
@@ -20,38 +16,33 @@ static struct SW {
 	pthread_spinlock_t lock;
 }*sliding_window;
 
+static const uint32_t localaddr = (127 << 24) + 1;
+static uint64_t lastSeq = 0, headSeq = 0, firstSeq = 0, connected = 0;
+static int lastAdvWindow = 0, timeoutcounter = 0;
+static int ssize, sockfd, rseed, n, mean, finish = 0;
+static int issamehost = 0, islocal = 0, dontroute = 1;
+static float prob;
+static struct timeval selectTime;
 static struct msghdr msgsend, msgrecv;
 static struct hdr sendhdr, recvhdr;
 static struct iovec iovsend[1], iovrecv[2];
-static void *inbuff;
 static struct sockaddr_in servaddr, taddr;
+static void *inbuff;
 static socklen_t len;
-
-static int ssize;
-static uint64_t lastSeq = 0;
-static uint64_t headSeq = 0;
-static int connected = 0;
-static uint64_t firstSeq = 0;
-static int finish = 0;
-static int lastAdvWindow = 0;
-static int sockfd;
-static float prob;
-static sigjmp_buf jmpbuf;
-static struct sigaction sa;
-static struct itimerval timer;
-static int timeoutcounter = 0;
 static pthread_t consumer;
-static void sig_alrm(int signo) {
-	siglongjmp(jmpbuf, 1);
-}
-
+static int timeout = 0;
+static int finishConsumer = 0;
 static int shouldDrop(int type, uint64_t seqNo) {
 	double randomNo;
 	randomNo = drand48();
-	printdebuginfo("randomNo: %lf, prob: %f\n", randomNo, prob);
+	//printdebuginfo("randomNo: %lf, prob: %f\n", randomNo, prob);
 	if(randomNo < prob) {
-		if(type)
-			printdebuginfo("Dropping Ack: %" PRIu64 "\n", seqNo);
+		if(type) {
+			if (seqNo)
+				printdebuginfo("Dropping Ack: %" PRIu64 "\n", seqNo);
+			else
+				printdebuginfo("Dropping First Connecting Packet.\n");
+		}
 		else
 			printdebuginfo("Dropping Packet: %" PRIu64 "\n", seqNo);
 		return 1;
@@ -71,20 +62,6 @@ static void printSlidingWindow2() {
 		}
 	}
 	printdebuginfo(" }\n");
-}
-
-static void printSlidingWindow() {
-	int i=0;
-	printdebuginfo("SW: {");
-	for(i=0; i<ssize; i++) {
-		if(sliding_window[i].pkt != NULL) {
-			printdebuginfo("%" PRIu64 ",", sliding_window[i].seq);
-		} else {
-			printdebuginfo("-1,");
-		}
-	}
-	printdebuginfo(" }\n");
-	//printSlidingWindow2();
 }
 
 static int randomGen() {
@@ -142,10 +119,11 @@ static void* consume() {
 	int thisConsumed = 0;
 	char *data;
 	int length = 0;
-	uint64_t tempSeq;
+	uint64_t tempSeq, startSeq, endSeq;
 
 	printdebuginfo("in consume\n");
-	while(1) {
+	while(!finishConsumer) {
+		startSeq = firstSeq;
 		while(!thisConsumed) {
 			tempSeq = firstSeq % ssize;
 			//printdebuginfo("taking lock, tempSeq: %u\n", tempSeq);	
@@ -164,25 +142,30 @@ static void* consume() {
 
 			if(data != NULL) {
 				if(firstSeq != 1) {
-					//printdebuginfo("\nprinting content\n");
-					write(STDOUT_FILENO, data, length);
+			//		n = write(STDOUT_FILENO, data, length);
 				}
 				free(data);
 			}
-			printSlidingWindow();
-			if(firstSeq == lastSeq && finish)
+			if(firstSeq == lastSeq && finish) {
+				printdebuginfo("Consumed Seq %" PRIu64 " - %" PRIu64 "\n", startSeq, firstSeq);
 				return NULL;
+			}
 
 			if(lastAdvWindow == 0)
 				sendAck();
 		}
+
+		endSeq = firstSeq;
+		if(startSeq != endSeq)
+			printdebuginfo("Consumed Sequence %" PRIu64 " : %" PRIu64 "\n", startSeq, endSeq-1);
+		printSlidingWindow2();
 		usleep(randomGen());
 		thisConsumed = 0;
 	}
 	return NULL;
 }
 
-static void declareMsgHdr(SA *destaddr, socklen_t destlen)
+static void declareMsgHdr()
 {
 	inbuff = zalloc(datalength * sizeof(char));
 
@@ -201,9 +184,9 @@ static void declareMsgHdr(SA *destaddr, socklen_t destlen)
 	iovrecv[1].iov_len = datalength;
 }
 
-static void insertToSw(ssize_t n) {
+static void insertToSw(ssize_t num) {
 	uint64_t newSeq = recvhdr.seq;
-	int length = n - sizeof(struct hdr);
+	int length = num - sizeof(struct hdr);
 	char *temp;
 
 	if(headSeq + lastAdvWindow < newSeq)
@@ -234,33 +217,41 @@ static void insertToSw(ssize_t n) {
 	if(newSeq > headSeq)
 		headSeq = newSeq;	
 
-	if(n<SEGLENGTH && connected) 
+	if(num<SEGLENGTH && connected) 
 		finish = 1;
+
+	printSlidingWindow2();
 }
 
-ssize_t dg_recv_send(int sockfd)
+void dg_recv_send(int sockfd)
 {
-	ssize_t n;
+	fd_set allset;
+	ssize_t num = 0;
 	uint64_t newSeq;
 	do {
-		printSlidingWindow();
 		printdebuginfo("Recieving..!!\n");
 		do {
-			n = recvmsg(sockfd, &msgrecv, 0);
-		} while(shouldDrop(0, recvhdr.seq));
+			FD_ZERO(&allset);
+			FD_SET(sockfd, &allset);
+			select(sockfd+1, &allset, NULL, NULL, &selectTime);
+			if(FD_ISSET(sockfd, &allset)) {
+				num = recvmsg(sockfd, &msgrecv, 0);
+				newSeq = recvhdr.seq;
+				printdebuginfo("Recieve Seq: %" PRIu64 "\n", newSeq);
+				timeoutcounter = 0;
+			} else {
+				timeout = 1;
+				return;
+			}
 
-		newSeq = recvhdr.seq;
-		printdebuginfo("Recieve Seq: %" PRIu64 "\n", newSeq);
+		} while(shouldDrop(0, recvhdr.seq));
 
 	} while(newSeq < lastSeq && sendAck());
 
 	if(newSeq)
-		insertToSw(n);
+		insertToSw(num);
 
 	if(!connected) {
-		setitimerwrapper(&timer, 0);
-		timeoutcounter = 0;	
-
 		taddr.sin_family = AF_UNSPEC;
 		len = sizeof(servaddr);
 		servaddr.sin_port   = strtol(inbuff, NULL, 10);
@@ -284,7 +275,7 @@ ssize_t dg_recv_send(int sockfd)
 	printdebuginfo("tail_seq: %" PRIu64 ", firstseq: %" PRIu64 "\n", headSeq, firstSeq);
 	sendAck();
 
-	return (n-sizeof(struct hdr));
+	return;
 }
 
 void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint32_t serverip)
@@ -348,8 +339,6 @@ int main(int argc, char **argv)
 	char *ifile = "client.in";
 	uint32_t serverip;
 	time_t t1;
-	struct timeval selectTime;
-	fd_set allset;
 	(void) time(&t1);
 
 	infile = fopen(ifile, "r");
@@ -413,7 +402,7 @@ int main(int argc, char **argv)
 		setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR | SO_DONTROUTE, &reuse, sizeof(reuse));
 	else
 		setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-	
+
 	len = sizeof(cliaddr);
 	if(bind(sockfd, (SA *) &cliaddr, len) < 0) {
 		perror("Not able to make local connection");
@@ -438,55 +427,55 @@ int main(int argc, char **argv)
 	printdebuginfo("Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
 	printdebuginfo("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 
-	//timeout and
-
-	//shouldDrop
-	memset (&sa, 0, sizeof (sa));
-	sa.sa_handler = &sig_alrm;
-	sigaction(SIGALRM, &sa, NULL);
-
 sendagain:
 	if(!shouldDrop(1, 0)) {
 		printdebuginfo("writing first packet now..\n");
-		write(sockfd, filename, strlen(filename));
+		n = write(sockfd, filename, strlen(filename));
+		if (n<0) {
+			perror("ERROR while writing data..!!\n");
+			exit(1);
+		}
 	}
 
-	printdebuginfo("setting timer to 3000\n");
-	setitimerwrapper(&timer, 3000);
-	if (sigsetjmp(jmpbuf, 1) != 0) {
+	declareMsgHdr();
+
+	selectTime.tv_sec = 3;
+	selectTime.tv_usec = 0;
+
+	dg_recv_send(sockfd);
+	if(timeout) {
 		printdebuginfo("timeout first pkt\n");
 		if(timeoutcounter < TIMEOUTLIMIT) {
 			timeoutcounter++;
+			timeout = 0;
 			goto sendagain;	
-		}
-		else {
+		} else {
 			printdebuginfo("Timeout Limit reached..!! Exiting now..!! \n");
 			exit(1);
 		}
 	}
 
-	declareMsgHdr((SA *) &servaddr, sizeof(servaddr));
-
 	while(!finish || lastSeq <= headSeq) {
-		len = dg_recv_send(sockfd);
-	}
-
-	for(;;) {
-		selectTime.tv_sec = 6;
+		timeout = 0;
+		selectTime.tv_sec = 10;
 		selectTime.tv_usec = 0;
-		FD_ZERO(&allset);
-		FD_SET(sockfd, &allset);
-		select(sockfd+1, &allset, NULL, NULL, &selectTime);
-		if(FD_ISSET(sockfd, &allset)) {
-			len = dg_recv_send(sockfd);
-		} else {
-			printdebuginfo("TIME_WAIT state, exiting\n");
+		dg_recv_send(sockfd);
+		if (timeout) {
+			printdebuginfo("timeout while recieving data..!!\n");
+			finish = 1;
+			finishConsumer = 1;
 			break;
 		}
 	}
 
-	printdebuginfo("joining pthread..!!\n");
+	if(!timeout) {
+		printdebuginfo("client going in timewait state..!!\n");
+		selectTime.tv_sec = 6;
+		selectTime.tv_usec = 0;
+		dg_recv_send(sockfd);
+	}
 
+	printdebuginfo("joining pthread..!!\n");
 	pthread_join(consumer, NULL);
 	destroyLock();
 
