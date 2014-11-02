@@ -244,8 +244,8 @@ int main(int argc, char **argv)
 		array[i].subaddr = subaddr;
 		array[i].sockfd = sockfd;
 
-		printf(" IP Address: %s\n", inet_ntoa(*(array[i].addr)));
-		printf(" Network Mask: %s\n", inet_ntoa(*(array[i].ntmaddr)));
+		printf(" IP Address: %s, ", inet_ntoa(*(array[i].addr)));
+		printf(" Network Mask: %s, ", inet_ntoa(*(array[i].ntmaddr)));
 		printf(" Subnet Address: %s\n", inet_ntoa(array[i].subaddr));
 
 	}
