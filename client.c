@@ -32,26 +32,8 @@ static socklen_t len;
 static pthread_t consumer;
 static int timeout = 0;
 static int finishConsumer = 0;
-static int shouldDrop(int type, uint64_t seqNo) {
-	double randomNo;
-	randomNo = drand48();
-	//printdebuginfo("randomNo: %lf, prob: %f\n", randomNo, prob);
-	if(randomNo < prob) {
-		if(type) {
-			if (seqNo)
-				printdebuginfo("Dropping Ack: %" PRIu64 "\n\n", seqNo);
-			else
-				printdebuginfo("Dropping First Connecting Packet.\n\n");
-		}
-		else
-			printdebuginfo("Dropping Packet: %" PRIu64 "\n\n", seqNo);
-		return 1;
-	}
-	else
-		return 0;
-}
 
-static void printSlidingWindow() {
+static void printSlidingWindow(int newline) {
 	int i=0;
 	printdebuginfo("Sliding Window: {");
 	for(i = (firstSeq%ssize); i <= (headSeq%ssize); i++) {
@@ -62,7 +44,30 @@ static void printSlidingWindow() {
 		}
 	}
 	printdebuginfo("}, ");
+	if(newline)
+		printdebuginfo("\n");
 }
+
+static int shouldDrop(int type, uint64_t seqNo) {
+	double randomNo;
+	randomNo = drand48();
+	//printdebuginfo("randomNo: %lf, prob: %f\n", randomNo, prob);
+	if(randomNo < prob) {
+		if(type) {
+			if (seqNo)
+				printdebuginfo("Dropping Ack: %" PRIu64 ", ", seqNo);
+			else
+				printdebuginfo("Dropping First Connecting Packet. ");
+		}
+		else
+			printdebuginfo("Dropping Packet: %" PRIu64 ", ", seqNo);
+		printSlidingWindow(1);
+		return 1;
+	}
+	else
+		return 0;
+}
+
 
 static int randomGen() {
 	double number = 0;
@@ -71,7 +76,7 @@ static int randomGen() {
 	number = drand48();
 	result = log((double)number) * mean * -1;
 	result *= 1000;
-	printdebuginfo("Sleeping for %d MicroSec.\n", (int)result);
+	//printdebuginfo("Sleeping for %d MicroSec.\n", (int)result);
 	return (int)result;
 }
 
@@ -151,7 +156,7 @@ static void* consume() {
 				free(data);
 			}
 			if(firstSeq == headSeq + 1 && finish) {
-				printdebuginfo("Consumed Seq %" PRIu64 " - %" PRIu64 "\n\n", startSeq, firstSeq-1);
+				printdebuginfo("Consumed Seq %" PRIu64 " - %" PRIu64 "\n", startSeq, firstSeq-1);
 				printdebuginfo("Exiting consumer\n");
 				return NULL;
 			}
@@ -161,10 +166,11 @@ static void* consume() {
 		}
 
 		endSeq = firstSeq;
-		if(startSeq != endSeq)
-			printdebuginfo("Consumed Sequence %" PRIu64 " : %" PRIu64 "\n\n", startSeq, endSeq-1);
+		if(startSeq != endSeq) {
+			printdebuginfo("Consumed Sequence %" PRIu64 " : %" PRIu64 "\n", startSeq, endSeq-1);
 
-		printSlidingWindow();
+			printSlidingWindow(0);
+		}
 		usleep(randomGen());
 		thisConsumed = 0;
 	}
@@ -197,10 +203,10 @@ static void insertToSw(ssize_t num) {
 	char *temp;
 
 	if(headSeq + lastAdvWindow < newSeq)
-		return;
+		goto exit;
 
 	if(sliding_window[newSeq%ssize].pkt != NULL)
-		return;
+		goto exit;
 
 	temp = (char *) zalloc (datalength);
 	memcpy(temp, inbuff, length);
@@ -226,8 +232,8 @@ static void insertToSw(ssize_t num) {
 
 	if(num<SEGLENGTH && connected) 
 		finish = 1;
-
-	printSlidingWindow();
+exit:
+	printSlidingWindow(0);
 }
 
 void dg_recv_send(int sockfd)
