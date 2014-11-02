@@ -266,7 +266,7 @@ recieveagain:
 	{
 		cincr = (int)(recvhdr.seq - h->seq);
 		if(cwin + cincr > sst)
-			cwin = sst + 1;
+			cwin = sst;
 		else
 			cwin = cwin + cincr;
 		cincr = 0;
