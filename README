@@ -1,42 +1,67 @@
+CSE 533 : NETWORK PROGRAMMING
+Assignment No: 02
+------------------------------------------------------
+ANKUR MITTAL (anmittal@cs.stonybrook.edu), (109176039)
+GAURAV DUGAR (gdugar@cs.stonybrook.edu), (109335678)
+------------------------------------------------------
 
-  This directory contains the modified code that permits us to pick up the
-  network masks using the ioctl version of get_ifi_info (Chapter 17).
+1. In order to bind only to unicast addresses, we have removed the check for broadcast addresses. We get only ifi_addr value from the struct ifi_info, which always has ip address. To get broadcast address we have to check flags and get it from ifi_brdaddr, which we are NOT doing.
 
-  Modifications have been introduced to the following files
-  (w.r.t. ~cse533/Stevens/unpv13e):
+2. the structure used to hold the information with respect to every socket bound to each interface of server conains 4 fields.
+	- sockfd (integer)
+	- addr (struct in_addr)
+	- ntmaddr (struct in_addr)
+	- subaddr (struct in_addr)
+	we create an array of such structures. subaddr is result of bitwise AND between addr and ntmaddr.
 
-  1. lib/get_ifi_info.c        here named      get_ifi_info_plus.c
-  2. lib/unpifi.h              here named      unpifiplus.h
-  3. ioctl/prifinfo.c          here named      prifinfo_plus.c
+3. Added plus to all the function names and did calculations in microseconds instead of seconds. Made all the changes as mentioned in assignment description.
+	In the unprrtplus.h header file we have set :
+	RTT_RXTMIN to 1000000 usec. (1 sec. instead of the old value   3 sec.)
+	RTT_RXTMAX to 3000000 usec. (3 sec. instead of the old value 60 sec.)
+	RTT_MAXNREXMT to 12 (instead of the current valoldue 3)
+	We also changed h to 16 and g to 32 as the ack come fast on local server.
 
+4. TCP reliability features:
+	-> We have Implemented FLOW_CONTROL by not sending packets to client when advertised window is 0. Once we get advertised window as zero after every timeout we send a probe to client by sending last packet and not increasing timeout count.
+	-> We implemented congestion control(SLOW START, CONGESTION AVOIDANCE) by setting ss threshold to advertised window in begining and then setting it to cwin/2 when timeout happens. cwin is increase by number of acks recieved when cwin<sst and after that it is incresed by 1 only when we get a total of cwin packets.
+	-> We implemented ARQ_MECHANISM by using rtt and SIG_ALARM, the minimum value for rtt is 1 sec and max is 3 sec. rto is calculated again when a ack is recieved.
 
-  Modifications in file get_ifi_info_plus.c:
-  ------------------------------------------
-
-  function  get_ifi_info   renamed  get_ifi_info_plus
-                (plus, slight modification in the code)
-
-  function  Get_ifi_info   renamed  Get_ifi_info_plus
-                (but no modification in the code itself,
-                 except for having it call get_ifi_info_plus
-                 instead of get_ifi_info)
-
-  function  free_ifi_info  renamed  free_ifi_info_plus
-                (plus, slight modification in the code)
-
-
-  Modifications in file unpifiplus.h:
-  -----------------------------------
-
-  extra field introduced in structure ifi_info for sockaddr structure
-  that holds network mask
-
-
-  Modifications in file prifinfo_plus.c:
-  --------------------------------------
-
-  function  prifinfo  renamed  prifinfo_plus  (plus slight
-       modification in code so as to print out network mask)
+5. The clean closing and exiting is implemented as follows:
+	-> The last packet coming from server will have payload of lesser size resulting in notification to of last packet. If, by chance, the last packet is full, then server sends another packet with no payload to notify the user.
+	-> The client then joins the consumer thread (ensuring consumer thread to read all data before exiting).
+	-> Client destroys all locks and closes the sockfd before exiting.
+	-> The server after recieving the acknowledgement of last packet from client exits the child server thread.
+	-> After recieving the last packet from server, the client sends the acknowledgement. Client waits for 2*MSL(6 sec) before exiting. (ensuring that server does not send any packet which would mean that server never recieved last ack).
+	We chose MSL as 3sec as that is the max rto.
 
 
+OTHER SPECIFICATIONS
+---------------------
+- Packet Header details:
+	-> To save bandwidth, we reuse the header field (sequence number) with acknowledgement number while sending ack to server.
+	-> Header also contains window size which contains advertized window size while sending ack to server.
 
+- We have used spinlock on the client side sliding window, as it is being accessed and modified by main thread (while recieving packets) and consumer thread (while resetting after reading). We used ARRAY of spinlocks on each element of spinlock to improve concurrency.
+
+- For ease of visualizing output, the code can be compiled in three ways.
+	-> use "make" for all information.
+	-> use "make NODEBUG=1" for viewing only the contents of file sent by user.
+	-> use "make NOCONTENT=1" for viewing all debug information except the content of file.
+
+- While showing the Sliding Window in client side. We show (-1), when the packet is missing. For example, if packet 13 and 15 are recieved and 14 is not recieved yet, then window will be (13, -1, 14).
+
+- On client side, the timeout happens 10 times before exiting the program. The timers used for timeout have following values:
+	-> 3 seconds (for first packet sent by timer to get port number)
+	-> 40 seconds (recieving timeout in client)
+	-> 6 seconds (waiting after sending last ack, to ensure that it reached server)
+
+- We have used srand48() and drand48() to use the given seed and generate random values. we add current timestamp to the given seed to get different values everytime. drand48() gives values between 0.0 and 1.0 in double precision.
+
+- Packet drop probability is calculated by the same means. Generating numbers between 0.0 and 1.0 and comparing the probability with that number to decide whether it should drop the packet (recieve or ack) or not.
+
+- We have also added a check in server if:
+	-> file exists or not.
+	-> server has read permission on file or not.
+- We have used pipes to communicate between server parent and child process and to clean child properly when terminated/exited.
+
+- We implemented linked list to keep track of connected clients, so that we don't create new process for same client again.
