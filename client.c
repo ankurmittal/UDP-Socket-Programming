@@ -152,7 +152,7 @@ static void* consume() {
 			}
 			if(firstSeq == headSeq + 1 && finish) {
 				printdebuginfo("Consumed Seq %" PRIu64 " - %" PRIu64 "\n\n", startSeq, firstSeq-1);
-				printdebuginfo("2. exiting consumer\n");
+				printdebuginfo("Exiting consumer\n");
 				return NULL;
 			}
 
@@ -168,7 +168,7 @@ static void* consume() {
 		usleep(randomGen());
 		thisConsumed = 0;
 	}
-	printdebuginfo("1. exiting consumer\n");
+	printdebuginfo("Exiting consumer\n");
 	return NULL;
 }
 

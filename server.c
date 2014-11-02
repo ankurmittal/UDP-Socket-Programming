@@ -51,6 +51,7 @@ int fillslidingwindow(int segments)
 	static uint32_t offset = 0;
 	static int hasmoredata = 1;
 	static int readcount = 0;
+	static int sendzerobytedata = 0;
 	if(!portclosed)
 	{
 		portclosed = 1;
@@ -71,11 +72,19 @@ int fillslidingwindow(int segments)
 			writetowindow(filebuf + offset, min(datalength, readcount - offset));
 			offset += datalength;
 		} 
+		else if(sendzerobytedata) {
+			writetowindow("", 0);
+			hasmoredata = 0;
+			return hasmoredata;
+		}
 		else if(hasmoredata)
 		{
 			offset = 0;
 			readcount = read(fileno(filefd), filebuf, bufsize);
-			if(readcount < bufsize)
+			if(readcount < bufsize && readcount%datalength == 0) {
+				sendzerobytedata = 1;
+			}
+			else if(readcount < bufsize)
 				hasmoredata = 0;
 			i--;
 		}
