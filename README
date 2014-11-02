@@ -1,6 +1,5 @@
-			CSE 533 : NETWORK PROGRAMMING
-				Assignment No: 02
-					README FILE
+CSE 533 : NETWORK PROGRAMMING
+Assignment No: 02
 ------------------------------------------------------
 ANKUR MITTAL (anmittal@cs.stonybrook.edu), (109176039)
 GAURAV DUGAR (gdugar@cs.stonybrook.edu), (109335678)
@@ -13,23 +12,25 @@ GAURAV DUGAR (gdugar@cs.stonybrook.edu), (109335678)
 	- sockfd (integer)
 	- addr (struct in_addr)
 	- ntmaddr (struct in_addr)
-- subaddr (struct in_addr)
+	- subaddr (struct in_addr)
 	we create an array of such structures. subaddr is result of bitwise AND between addr and ntmaddr.
 
 
-3. Modify function rtt_stop (Fig. 22.13) so that it uses integer arithmetic rather than floating point. This will entail your also having to modify some of the variable and function parameter declarations throughout Section 22.5 from float to int, as appropriate.
+3. ANKUR MITTAL
+Modify function rtt_stop (Fig. 22.13) so that it uses integer arithmetic rather than floating point. This will entail your also having to modify some of the variable and function parameter declarations throughout Section 22.5 from float to int, as appropriate.
 
 	In the unprrt.h header file (Fig. 22.10) set :
 	RTT_RXTMIN   to 1000 msec.   (1 sec. instead of the current value   3 sec.)
 	RTT_RXTMAX  to 3000 msec.   (3 sec. instead of the current value 60 sec.)
-RTT_MAXNREXMT  to 12        (instead of the current value 3)
+	RTT_MAXNREXMT  to 12        (instead of the current value 3)
 
 	In function rtt_timeout (Fig. 22.14), after doubling the RTO in line 86, pass its value through the function rtt_minmax of Fig. 22.11 (somewhat along the lines of what is done in line 77 of rtt_stop, Fig. 22.13).
 
 	Finally, note that with the modification to integer calculation of the smoothed RTT and its variation, and given the small RTT values you will experience on the cs / sbpub network, these calculations should probably now be done on a millisecond or even microsecond scale (rather than in seconds, as is the case with Stevens’ code). Otherwise, small measured RTTs could show up as 0 on a scale of seconds, yielding a negative result when we subtract the smoothed RTT from the measured RTT (line 72 of rtt_stop, Fig. 22.13).
 
 
-4. report on all the TCP mechanisms you implemented in the ReadMe file, both the ones discussed here, and the ones I will be discussing in class.
+4. ANKUR MITTAL
+report on all the TCP mechanisms you implemented in the ReadMe file, both the ones discussed here, and the ones I will be discussing in class.
 (ARQ mechanism and all others such as congestion control)
 
 
