@@ -22,7 +22,7 @@ GAURAV DUGAR (gdugar@cs.stonybrook.edu), (109335678)
 	We also changed h to 16 and g to 32 as the ack come fast on local server.
 
 4. TCP reliability features:
-	-> We have Implemented FLOW_CONTROL by not sending packets to client when advertised winc=dow is 0. Once we get advertised window as zero after every timeout we send a probe to client by sending last packet and not increasing timeout count.
+	-> We have Implemented FLOW_CONTROL by not sending packets to client when advertised window is 0. Once we get advertised window as zero after every timeout we send a probe to client by sending last packet and not increasing timeout count.
 	-> We implemented congestion control(SLOW START, CONGESTION AVOIDANCE) by setting ss threshold to advertised window in begining and then setting it to cwin/2 when timeout happens. cwin is increase by number of acks recieved when cwin<sst and after that it is incresed by 1 only when we get a total of cwin packets.
 	-> We implemented ARQ_MECHANISM by using rtt and SIG_ALARM, the minimum value for rtt is 1 sec and max is 3 sec. rto is calculated again when a ack is recieved.
 
@@ -38,7 +38,7 @@ GAURAV DUGAR (gdugar@cs.stonybrook.edu), (109335678)
 OTHER SPECIFICATIONS
 ---------------------
 - Packet Header details:
-	-> To save bandwidth, we reuse the header field (sequence number) with acknowledgement number while sending acknoeledgement to server.
+	-> To save bandwidth, we reuse the header field (sequence number) with acknowledgement number while sending ack to server.
 	-> Header also contains window size which contains advertized window size while sending ack to server.
 
 - We have used spinlock on the client side sliding window, as it is being accessed and modified by main thread (while recieving packets) and consumer thread (while resetting after reading). We used ARRAY of spinlocks on each element of spinlock to improve concurrency.
@@ -62,3 +62,6 @@ OTHER SPECIFICATIONS
 - We have also added a check in server if:
 	-> file exists or not.
 	-> server has read permission on file or not.
+- We have used pipes to communicate between server parent and child process and to clean child properly when terminated/exited.
+
+- We implemented linked list to keep track of connected clients, so that we don't create new process for same client again.
