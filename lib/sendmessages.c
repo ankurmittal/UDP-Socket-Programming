@@ -156,8 +156,8 @@ sendagain:
 			perror(" Error in sending data");
 			return -1;
  		}
-		if(n < 512)
-			printf(" data sent %d\n", n);
+		if(n < 512 && h->seq)
+			printf(" Last packet sent.");
 	}
 	if(window)
 		printf("\n");
