@@ -12,6 +12,10 @@ ifeq ($(NODEBUG), 1)
 	 DEBUGFLAG=-DNDEBUGINFO
 endif
 
+ifeq ($(NOCONTENT), 1)
+	 NCONTENT=-DNCONTENT
+endif
+
 
 CC = gcc
 
@@ -27,7 +31,7 @@ libmake:
 client: client.o lib/mylib.a lib/common.h
 	${CC} ${FLAGS} -o client client.o lib/mylib.a ${LIBS}
 client.o: client.c 
-	${CC} ${CFLAGS} ${UBUNTUF} ${DEBUGFLAG} -c client.c
+	${CC} ${CFLAGS} ${UBUNTUF} ${DEBUGFLAG} ${NCONTENT} -c client.c
 
 server: server.o lib/mylib.a lib/common.h
 	${CC} ${FLAGS} -o server server.o lib/mylib.a ${LIBS}

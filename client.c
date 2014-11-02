@@ -142,7 +142,11 @@ static void* consume() {
 
 			if(data != NULL) {
 				if(firstSeq != 1) {
+#ifndef NCONTENT
+					printdebuginfo("\n");
 					n = write(STDOUT_FILENO, data, length);
+					printdebuginfo("\n\n");
+#endif
 				}
 				free(data);
 			}
