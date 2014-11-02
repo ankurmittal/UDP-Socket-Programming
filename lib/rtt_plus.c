@@ -28,7 +28,7 @@ rtt_init_plus(struct rtt_info *ptr)
 	ptr->rtt_base   = (uint64_t)tv.tv_sec *1000000.0 + tv.tv_usec;
 	ptr->rtt_rtt    = 0;
 	ptr->rtt_srtt   = 0;
-	ptr->rtt_rttvar = 300000;
+	ptr->rtt_rttvar = 750000;
 	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 		/* first RTO at (srtt + (4 * rttvar)) = 3 seconds */
 }
@@ -88,12 +88,12 @@ rtt_stop_plus(struct rtt_info *ptr, uint32_t ms)
 	 */
 
 	delta = ptr->rtt_rtt - ptr->rtt_srtt;
-	ptr->rtt_srtt += delta / 8;		/* g = 1/8 */
+	ptr->rtt_srtt += delta / 32;		/* g = 1/8 */
 
 	if (delta < 0)
 		delta = -delta;				/* |delta| */
-
-	ptr->rtt_rttvar += (delta - ptr->rtt_rttvar) / 4;	/* h = 1/4 */
+	
+	ptr->rtt_rttvar += (delta - ptr->rtt_rttvar) / 16;	/* h = 1/4 */
 
 	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 }
@@ -128,7 +128,7 @@ rtt_debug(struct rtt_info *ptr)
 	if (rtt_d_flag == 0)
 		return;
 
-	fprintf(stdout, "rtt = %ld , srtt = %ld, rttvar = %ld, rto = %ldms\n",
+	fprintf(stdout, "rtt = %ld , srtt = %ld, rttvar = %ld, rto = %ldus\n",
 			ptr->rtt_rtt, ptr->rtt_srtt, ptr->rtt_rttvar, ptr->rtt_rto);
 	fflush(stdout);
 }

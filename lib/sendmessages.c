@@ -4,7 +4,7 @@
 #include <setjmp.h>
 #define RTT_DEBUG
 static struct rtt_info rttinfo;
-static int rttinit = 0, cwin = 1, sst = 0, sw = 0, packintransit = 0, secondaryfd = 0, fd = 0;
+static int rttinit = 0, cwin = 1, sst = 0, sw = 0, awindow, packintransit = 0, secondaryfd = 0, fd = 0;
 static uint64_t sequence = 0;
 static int head = -1, tail = -1, current = -1, csize = 0;
 static struct msghdr *msgsend =  NULL;
@@ -13,7 +13,7 @@ static void sig_alrm(int signo);
 static sigjmp_buf jmpbuf;
 
 
-void init_sender(int window, int f) 
+void init_sender(int window, int f, int padvwindow) 
 {
 	int i;
 	sw = sst = window;
@@ -26,6 +26,7 @@ void init_sender(int window, int f)
 		msgsend[i].msg_iovlen = 2;
 	}
 	fd = f;
+	sst = awindow = padvwindow;
 }
 
 void setsecondaryfd(int s)
@@ -98,7 +99,7 @@ static struct hdr *gethdr(struct msghdr *mh)
 
 int dg_send(callback c)
 {
-	int window, awindow = sw, cincr = 0;
+	int window, cincr = 0;
 	uint64_t lastseq = -1;
 	int usesecondaryfd = 0, dupcount = 0, i, n;
 	struct iovec iovrecv[1];
@@ -179,7 +180,7 @@ sendagain:
 			goto sendagain;
 		}
 		printf("Timeout, resending");
-		printf(", timeout at: %u\n", rtt_ts_plus(&rttinfo));
+		printf(", timeout at: %uus\n", rtt_ts_plus(&rttinfo));
 		sst = min(cwin/2, sw);
 		sst = max(sst, 2);
 		cwin = 1;
@@ -193,9 +194,6 @@ recieveagain:
 	{
 		do {
 			n = recvmsg(secondaryfd, &msgrecv, 0);
-			printf("%d\n", n);
-			if(n < 0)
-				perror("Error while reading from client");
 		} while(n < 0);
 	}
 	else

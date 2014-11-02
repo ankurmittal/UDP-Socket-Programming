@@ -2,7 +2,6 @@
 
 ll_node* ll_initiate(void *data) {
 	ll_node *ll_pointer;
-	printf("\nInitiating linked list now..!!\n");
 	ll_pointer = (ll_node *)malloc(sizeof(ll_node));
 	ll_pointer->next = NULL;
 	ll_pointer->prev = NULL;
@@ -12,7 +11,6 @@ ll_node* ll_initiate(void *data) {
 
 void ll_insert(ll_node *ll_pointer, void *data)
 {
-	printf("\nInserting in Linked List now..!!\n");
 	while(ll_pointer->next!=NULL)
 	{
 		ll_pointer = ll_pointer -> next;

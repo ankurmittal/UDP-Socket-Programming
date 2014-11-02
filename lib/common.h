@@ -18,6 +18,11 @@ struct hdr {
 	int window_size; /* window size*/
 };
 
+struct connectioninfo {
+	char filename[256];
+	int window;
+};
+
 void readstring(char *buf, int bufsize, FILE *f);
 
 int readint(FILE *f);

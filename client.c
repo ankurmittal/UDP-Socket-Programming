@@ -333,12 +333,13 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 int main(int argc, char **argv)
 {
 	int sport, reuse = 1, i=0;
-	char serveripaddr[16], filename[PATH_MAX];
+	char serveripaddr[16];
 	struct sockaddr_in cliaddr;
 	FILE *infile;
 	char *ifile = "client.in";
 	uint32_t serverip;
 	time_t t1;
+	struct connectioninfo info;
 	(void) time(&t1);
 
 	infile = fopen(ifile, "r");
@@ -360,10 +361,12 @@ int main(int argc, char **argv)
 	if(serverip == localaddr) {
 		issamehost = 1;
 	}
+
+	bzero(&info, sizeof(info));
 	sport = readint(infile);
 	servaddr.sin_port   = htons(sport);
-	readstring(filename, PATH_MAX, infile);
-	ssize = lastAdvWindow = readint(infile);
+	readstring(info.filename, sizeof(info.filename), infile);
+	info.window = ssize = lastAdvWindow = readint(infile);
 	rseed = readint(infile);
 	prob = readfloat(infile);
 	mean = readint(infile);
@@ -430,7 +433,7 @@ int main(int argc, char **argv)
 sendagain:
 	if(!shouldDrop(1, 0)) {
 		printdebuginfo("writing first packet now..\n");
-		n = write(sockfd, filename, strlen(filename));
+		n = write(sockfd, &info, sizeof(info));
 		if (n<0) {
 			perror("ERROR while writing data..!!\n");
 			exit(1);
