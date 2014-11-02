@@ -101,14 +101,15 @@ int dg_send(callback c)
 {
 	int window, cincr = 0;
 	uint64_t lastseq = -1;
-	int usesecondaryfd = 0, dupcount = 0, i, n;
+	int usesecondaryfd = 0, dupcount = 0, i, n, resettimer = 1;
 	struct iovec iovrecv[1];
 	struct msghdr *m;
 	struct hdr recvhdr, *h;
 	struct sigaction sa;
 	struct itimerval timer;
 	int hasmorepackets = 1;
-	long stimer, rto;
+	long stimer = 0, rto;
+	char *congestioninfomsg;
 	memset (&sa, 0, sizeof (sa));
 	sa.sa_handler = &sig_alrm;
 	if (rttinit == 0) {
@@ -130,12 +131,15 @@ sendagain:
 	window = min(awindow - packintransit, window);
 	window = min(window, csize - packintransit);
 	rto = rtt_start_plus(&rttinfo);
-	printf("\ncwin = %d, sst= %d, adv window=%d, packet in transit=%d, window content=", cwin, sst, awindow, packintransit);
+	if(cwin < sst)
+		congestioninfomsg = "SLOW START";
+	else
+		congestioninfomsg = "CONGESTION AVOIDANCE";
+	printf("\ncwin = %d, sst= %d, %s, adv window=%d, packet in transit=%d, window content=", cwin, sst, congestioninfomsg, awindow, packintransit);
 	printwindowcontent(1);
 	rtt_debug(&rttinfo);
 	//printf("send window %d, pt: %d, ", window, packintransit);
 	//printf("current:%d, head:%d, tail:%d", current, head, tail);
-	stimer = rtt_ts_plus(&rttinfo);
 	for(i = 0; i < window; i++)
 	{
 		if(current == tail && csize < sw)
@@ -158,6 +162,10 @@ sendagain:
  		}
 		if(n < 512 && h->seq)
 			printf(" Last packet sent.");
+	}
+	if(resettimer) {
+		stimer = rtt_ts_plus(&rttinfo);
+		resettimer = 0;
 	}
 	if(window)
 		printf("\n");
@@ -208,7 +216,15 @@ recieveagain:
 	{
 		goto recieveagain;
 	}
-	rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo) - stimer);
+	if(recvhdr.seq < h->seq) {
+		printf("Recieved old ack:%" PRIu64 ", discarding\n", recvhdr.seq);
+		goto recieveagain;
+	}
+	if(recvhdr.seq == h->seq + 1 || recvhdr.seq == h->seq) {
+		rtt_stop_plus(&rttinfo, rtt_ts_plus(&rttinfo) - stimer);
+		resettimer = 1;
+		printf("Resetting rtt timer.\n");
+	}
 	if(recvhdr.seq == lastseq + 1)
 	{
 		dupcount++;
@@ -226,7 +242,11 @@ recieveagain:
 		m = &msgsend[head];
 		h = gethdr(m);
 		//h->ts = rtt_ts_plus(&rttinfo);
-		printf("Sending segment %" PRIu64 " again\n", recvhdr.seq);
+		printf("Sending segment %" PRIu64 " again(Fast retransmission)\n", recvhdr.seq);
+		if(cwin > sst) {
+			cwin = sst;
+			printf("Fast recovery\n");
+		}
 		n = sendmsg(fd, m, 0);
 		dupcount = 0;
 		setitimerwrapper(&timer, rtt_start_plus(&rttinfo));
@@ -266,7 +286,7 @@ recieveagain:
 		//printf("resetting current:%d, %d, %d\n", current, head, csize);
 		current = (head + sw - 1)%sw;
  	}
-	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
+	rtt_newpack_plus(&rttinfo);/* initialize for this packet */
 	goto sendagain;
 }
 

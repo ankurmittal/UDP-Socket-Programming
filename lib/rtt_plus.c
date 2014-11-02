@@ -88,12 +88,12 @@ rtt_stop_plus(struct rtt_info *ptr, uint32_t ms)
 	 */
 
 	delta = ptr->rtt_rtt - ptr->rtt_srtt;
-	ptr->rtt_srtt += delta / 32;		/* g = 1/8 */
+	ptr->rtt_srtt += delta >> 3;		/* g = 1/8 */
 
 	if (delta < 0)
 		delta = -delta;				/* |delta| */
 	
-	ptr->rtt_rttvar += (delta - ptr->rtt_rttvar) / 16;	/* h = 1/4 */
+	ptr->rtt_rttvar += (delta - ptr->rtt_rttvar) >> 2;	/* h = 1/4 */
 
 	ptr->rtt_rto = rtt_minmax(RTT_RTOCALC(ptr));
 }
