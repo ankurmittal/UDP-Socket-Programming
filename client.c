@@ -39,21 +39,21 @@ static int shouldDrop(int type, uint64_t seqNo) {
 	if(randomNo < prob) {
 		if(type) {
 			if (seqNo)
-				printdebuginfo("Dropping Ack: %" PRIu64 "\n", seqNo);
+				printdebuginfo("Dropping Ack: %" PRIu64 "\n\n", seqNo);
 			else
-				printdebuginfo("Dropping First Connecting Packet.\n");
+				printdebuginfo("Dropping First Connecting Packet.\n\n");
 		}
 		else
-			printdebuginfo("Dropping Packet: %" PRIu64 "\n", seqNo);
+			printdebuginfo("Dropping Packet: %" PRIu64 "\n\n", seqNo);
 		return 1;
 	}
 	else
 		return 0;
 }
 
-static void printSlidingWindow2() {
+static void printSlidingWindow() {
 	int i=0;
-	printdebuginfo("SW2: {");
+	printdebuginfo("Sliding Window: {");
 	for(i = (firstSeq%ssize); i <= (headSeq%ssize); i++) {
 		if(sliding_window[i].pkt != NULL) {
 			printdebuginfo("%" PRIu64 ",", sliding_window[i].seq);
@@ -61,7 +61,7 @@ static void printSlidingWindow2() {
 			printdebuginfo("-1,");
 		}
 	}
-	printdebuginfo(" }\n");
+	printdebuginfo("}, ");
 }
 
 static int randomGen() {
@@ -71,7 +71,7 @@ static int randomGen() {
 	number = drand48();
 	result = log((double)number) * mean * -1;
 	result *= 1000;
-	//printdebuginfo("Sleeping for %d MicroSec.\n", (int)result);
+	printdebuginfo("Sleeping for %d MicroSec.\n", (int)result);
 	return (int)result;
 }
 
@@ -84,7 +84,7 @@ int sendAck() {
 	}
 	sendhdr.window_size = ssize - (int)(headSeq  - firstSeq) - 1;
 	lastAdvWindow = ssize - (int)(headSeq  - firstSeq) - 1;
-	printdebuginfo("Sending Ack= %" PRIu64 ", window_size= %d\n", sendhdr.seq, sendhdr.window_size);
+	printdebuginfo("Sending Ack = %" PRIu64 ", Window Size= %d\n\n", sendhdr.seq, sendhdr.window_size);
 	n = sendmsg(sockfd, &msgsend, 0);
 	if(n<0) {
 		perror("Error sending ack, exiting..!!");
@@ -121,7 +121,7 @@ static void* consume() {
 	int length = 0;
 	uint64_t tempSeq, startSeq, endSeq;
 
-	printdebuginfo("in consume\n");
+	//printdebuginfo("in consume\n");
 	while(!finishConsumer) {
 		startSeq = firstSeq;
 		while(!thisConsumed) {
@@ -142,12 +142,13 @@ static void* consume() {
 
 			if(data != NULL) {
 				if(firstSeq != 1) {
-			//		n = write(STDOUT_FILENO, data, length);
+					n = write(STDOUT_FILENO, data, length);
 				}
 				free(data);
 			}
-			if(firstSeq == lastSeq && finish) {
-				printdebuginfo("Consumed Seq %" PRIu64 " - %" PRIu64 "\n", startSeq, firstSeq);
+			if(firstSeq == headSeq + 1 && finish) {
+				printdebuginfo("Consumed Seq %" PRIu64 " - %" PRIu64 "\n\n", startSeq, firstSeq-1);
+				printdebuginfo("2. exiting consumer\n");
 				return NULL;
 			}
 
@@ -157,11 +158,13 @@ static void* consume() {
 
 		endSeq = firstSeq;
 		if(startSeq != endSeq)
-			printdebuginfo("Consumed Sequence %" PRIu64 " : %" PRIu64 "\n", startSeq, endSeq-1);
-		printSlidingWindow2();
+			printdebuginfo("Consumed Sequence %" PRIu64 " : %" PRIu64 "\n\n", startSeq, endSeq-1);
+
+		printSlidingWindow();
 		usleep(randomGen());
 		thisConsumed = 0;
 	}
+	printdebuginfo("1. exiting consumer\n");
 	return NULL;
 }
 
@@ -220,7 +223,7 @@ static void insertToSw(ssize_t num) {
 	if(num<SEGLENGTH && connected) 
 		finish = 1;
 
-	printSlidingWindow2();
+	printSlidingWindow();
 }
 
 void dg_recv_send(int sockfd)
@@ -229,7 +232,7 @@ void dg_recv_send(int sockfd)
 	ssize_t num = 0;
 	uint64_t newSeq;
 	do {
-		printdebuginfo("Recieving..!!\n");
+		//printdebuginfo("Recieving..!!\n");
 		do {
 			FD_ZERO(&allset);
 			FD_SET(sockfd, &allset);
@@ -262,17 +265,17 @@ void dg_recv_send(int sockfd)
 			close(sockfd);
 			exit(1);
 		}
-		printdebuginfo("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
+		printdebuginfo(" Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
 		connected = 1;
 
 		lastSeq = 1;
 		firstSeq = 1;
 
-		printdebuginfo("Creating new thread\n");
+		printdebuginfo("Creating consumer thread\n");
 		pthread_create(&consumer, NULL, consume, NULL);
 	}
 
-	printdebuginfo("tail_seq: %" PRIu64 ", firstseq: %" PRIu64 "\n", headSeq, firstSeq);
+	//printdebuginfo("tail_seq: %" PRIu64 ", firstseq: %" PRIu64 "\n", headSeq, firstSeq);
 	sendAck();
 
 	return;
@@ -313,19 +316,17 @@ void resolveips(struct sockaddr_in *servaddr, struct sockaddr_in *cliaddr, uint3
 		}
 	}
 	if(issamehost) {
-		printdebuginfo(" Server is on same host, ");
+		printdebuginfo("Server is on same host.\n");
 		servaddr->sin_addr.s_addr = cliaddr->sin_addr.s_addr = ntohl(localaddr);
-	}
-
-	else if(islocal) {
-		printdebuginfo(" Server is local, ");
+	} else if(islocal) {
+		printdebuginfo("Server is local.\n");
 	} else {
 		dontroute = 0;
-		printdebuginfo(" Server is not local, ");
+		printdebuginfo("Server is not local.\n");
 		sa = (struct sockaddr_in *) ifihead->ifi_addr;
 		cliaddr->sin_addr.s_addr = sa->sin_addr.s_addr;
 	}
-	printdebuginfo("IPserver: %s, ", inet_ntoa(servaddr->sin_addr));
+	printdebuginfo(" IPserver: %s, ", inet_ntoa(servaddr->sin_addr));
 	printdebuginfo("IPclient: %s\n", inet_ntoa(cliaddr->sin_addr));
 	free_ifi_info_plus(ifihead);
 }
@@ -379,11 +380,11 @@ int main(int argc, char **argv)
 
 	srand48((long) t1 + rseed);
 
-	printdebuginfo("initiating locks..!!\n");
+	//printdebuginfo("initiating locks..!!\n");
 	if(initiateLock() != 0) {
 		//free all allocated memory and exit the program
 	}
-	printdebuginfo("locks initiated..!!\n");
+	//printdebuginfo("locks initiated..!!\n");
 
 	for(i=0; i<ssize; i++) {
 		sliding_window[i].pkt = NULL;
@@ -397,7 +398,7 @@ int main(int argc, char **argv)
 	resolveips(&servaddr, &cliaddr, serverip);
 	cliaddr.sin_port = htons(0);
 
-	printdebuginfo("In Main Thread..!!\n");
+	//printdebuginfo("In Main Thread..!!\n");
 
 	sockfd = Socket (AF_INET, SOCK_DGRAM, 0);
 
@@ -427,8 +428,8 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	printdebuginfo("Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
-	printdebuginfo("Server Address: %s\n", Sock_ntop((SA *) &servaddr, len));
+	printdebuginfo(" Client Address: %s\n", Sock_ntop((SA *) &cliaddr, len));
+	printdebuginfo(" Server Address: %s\n\n", Sock_ntop((SA *) &servaddr, len));
 
 sendagain:
 	if(!shouldDrop(1, 0)) {
@@ -453,14 +454,14 @@ sendagain:
 			timeout = 0;
 			goto sendagain;	
 		} else {
-			printdebuginfo("Timeout Limit reached..!! Exiting now..!! \n");
-			exit(1);
+			fprintf(stderr, "Timeout Limit reached..!! Exiting now..!! \n");
+			return -1;
 		}
 	}
 
 	while(!finish || lastSeq <= headSeq) {
 		timeout = 0;
-		selectTime.tv_sec = 10;
+		selectTime.tv_sec = 40;
 		selectTime.tv_usec = 0;
 		dg_recv_send(sockfd);
 		if (timeout) {
@@ -478,7 +479,7 @@ sendagain:
 		dg_recv_send(sockfd);
 	}
 
-	printdebuginfo("joining pthread..!!\n");
+	//printdebuginfo("joining pthread..!!\n");
 	pthread_join(consumer, NULL);
 	destroyLock();
 
