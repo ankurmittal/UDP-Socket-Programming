@@ -263,7 +263,7 @@ recieveagain:
 	if(csize && (((current + 1)%sw < head && (current + 1)%sw + sw >= head + csize) 
 			|| (current + 1)%sw >= head + csize))
 	{
-		printf("resetting current:%d, %d, %d\n", current, head, csize);
+		//printf("resetting current:%d, %d, %d\n", current, head, csize);
 		current = (head + sw - 1)%sw;
  	}
 	rtt_newpack_plus(&rttinfo); /* initialize for this packet */
